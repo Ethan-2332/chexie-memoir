@@ -26,6 +26,19 @@
     return cfg.SUPABASE_URL + "/storage/v1/object/public/" + cfg.PHOTO_BUCKET + "/" + path;
   };
 
+  /* ---------- 缩略图地址 ----------
+     约定：缩略图放在同目录的 thumb/ 子目录下
+       photos/w001/1.jpg        → photos/w001/thumb/1.jpg      （仓库里的老照片）
+       published/<wid>/1.jpg    → published/<wid>/thumb/1.jpg   （Supabase 里的新照片）
+     找不到缩略图时浏览器会退回原图，所以这个函数是"尽力而为"。
+  */
+  window.thumbUrl = function (path) {
+    if (!path) return "";
+    const i = path.lastIndexOf("/");
+    if (i < 0) return photoUrl(path);
+    return photoUrl(path.slice(0, i) + "/thumb" + path.slice(i));
+  };
+
   /* ---------- 登录态 ---------- */
   window.getSession = async function () {
     const { data } = await sb.auth.getSession();

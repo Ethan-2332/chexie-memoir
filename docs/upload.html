@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>上传照片 · 骑行回忆录</title>
+<link rel="stylesheet" href="app.css">
+<style>
+  .drop{
+    border:2px dashed var(--line);border-radius:12px;padding:34px 18px;text-align:center;
+    color:var(--dim);cursor:pointer;transition:.15s;background:#fbfcfe;
+  }
+  .drop:hover,.drop.over{border-color:#a9c6ee;background:var(--accent-soft);color:var(--accent)}
+  .drop b{color:var(--accent)}
+  .thumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:10px;margin-top:16px}
+  .thumb{position:relative;border-radius:10px;overflow:hidden;border:1px solid var(--line);background:#eef1f5}
+  .thumb img{width:100%;height:82px;object-fit:cover;display:block}
+  .thumb .no{position:absolute;left:6px;top:6px;background:rgba(0,0,0,.55);color:#fff;font-size:11px;padding:1px 6px;border-radius:999px}
+  .thumb .del{
+    position:absolute;right:5px;top:5px;border:0;width:22px;height:22px;border-radius:50%;
+    background:rgba(0,0,0,.55);color:#fff;cursor:pointer;font-size:14px;line-height:1;padding:0;
+  }
+  .thumb .del:hover{background:var(--danger)}
+  .cover{position:absolute;left:6px;bottom:6px;background:var(--accent);color:#fff;font-size:11px;padding:1px 7px;border-radius:999px}
+  .bar{height:6px;background:#eef1f5;border-radius:99px;overflow:hidden;margin-top:14px;display:none}
+  .bar.show{display:block}
+  .bar i{display:block;height:100%;background:var(--accent);width:0;transition:.25s}
+  .steps{font-size:13.5px;color:var(--dim);margin-top:10px;white-space:pre-line}
+</style>
+</head>
+<body>
+
+<div class="topbar" id="topbar"></div>
+
+<div class="wrap">
+
+  <!-- 未登录 -->
+  <div class="card" id="needLogin" style="display:none">
+    <h3>上传需要先登录</h3>
+    <p class="hint">浏览不需要登录，但上传照片要确认你是协会成员。</p>
+    <a class="btn" href="login.html?next=upload.html">去登录 / 注册</a>
+  </div>
+
+  <div id="main" style="display:none">
+    <h1>上传照片</h1>
+    <p class="lead">一次上传 = 一个作品。选好照片、填上地点，提交后等管理员审核通过就会出现在首页。</p>
+
+    <form id="form">
+      <div class="card">
+        <h3>1. 选择照片</h3>
+        <p class="hint">支持 jpg / png / webp，可多选。会自动压缩，原图不用管大小。</p>
+        <div class="drop" id="drop">
+          <div style="font-size:15px">点这里选照片，或把照片<b>拖进来</b></div>
+          <div style="font-size:12.5px;margin-top:6px">第一张作为封面 · 建议一个作品 3～9 张</div>
+        </div>
+        <input type="file" id="files" accept="image/*" multiple hidden>
+        <div class="thumbs" id="thumbs"></div>
+      </div>
+
+      <div class="card">
+        <h3>2. 这是什么</h3>
+        <p class="hint">日期和地点是以后搜索的依据，尽量填准。</p>
+
+        <div class="row">
+          <div>
+            <label for="date">拍摄日期</label>
+            <input type="date" id="date">
+          </div>
+          <div>
+            <label for="place">地点 <span style="color:var(--danger)">*</span></label>
+            <input type="text" id="place" maxlength="40" placeholder="例如：天目湖-大溪水库" required>
+          </div>
+        </div>
+
+        <label for="caption">文案（会显示在作品上）</label>
+        <textarea id="caption" maxlength="300" placeholder="例如：环湖一圈，风把汗都吹干了"></textarea>
+
+        <div class="row">
+          <div>
+            <label for="author">投稿人昵称</label>
+            <input type="text" id="author" maxlength="24" placeholder="留空则不显示">
+          </div>
+          <div>
+            <label for="tags">标签（用逗号分隔，可留空）</label>
+            <input type="text" id="tags" maxlength="80" placeholder="例如：环湖, 日落">
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <button class="btn block" id="btnSubmit" type="submit" style="margin-top:0">提交，等待审核</button>
+        <div class="bar" id="bar"><i id="barIn"></i></div>
+        <div class="steps" id="steps"></div>
+      </div>
+    </form>
+
+    <div class="msg" id="msg"></div>
+  </div>
+
+  <div class="footer">提交后管理员会收到待审列表 · <a href="index.html">回到首页</a></div>
+</div>
+
+<script src="vendor/supabase.js"></script>
+<script src="config.js"></script>
+<script src="auth.js"></script>
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  const show = (t, k) => { const m = $("msg"); m.textContent = t; m.className = "msg show " + (k || "info"); };
+  const hide = () => { $("msg").className = "msg"; };
+
+  let session = null;
+  let picked = [];          // [{file, url}]
+
+  /* ---------- 压缩 ---------- */
+  async function toBlob(file, maxSide, quality) {
+    let src;
+    try { src = await createImageBitmap(file); }
+    catch (e) {
+      src = await new Promise((res, rej) => {
+        const im = new Image();
+        im.onload = () => res(im); im.onerror = rej;
+        im.src = URL.createObjectURL(file);
+      });
+    }
+    const w0 = src.width, h0 = src.height;
+    const scale = Math.min(1, maxSide / Math.max(w0, h0));
+    const w = Math.max(1, Math.round(w0 * scale)), h = Math.max(1, Math.round(h0 * scale));
+    const cv = document.createElement("canvas");
+    cv.width = w; cv.height = h;
+    cv.getContext("2d").drawImage(src, 0, 0, w, h);
+    if (src.close) try { src.close(); } catch (e) {}
+    return await new Promise(r => cv.toBlob(r, "image/jpeg", quality));
+  }
+
+  /* ---------- 从照片里猜拍摄日期（读前 128KB 找 EXIF 的 2024:05:18 格式） ---------- */
+  async function guessDate(file) {
+    try {
+      const text = await file.slice(0, 131072).text();
+      const m = text.match(/(\d{4}):(\d{2}):(\d{2})/);
+      if (m) return m[1] + "-" + m[2] + "-" + m[3];
+    } catch (e) {}
+    return null;
+  }
+
+  /* ---------- 预览 ---------- */
+  function renderThumbs() {
+    const box = $("thumbs");
+    box.innerHTML = "";
+    picked.forEach(function (it, i) {
+      const d = document.createElement("div");
+      d.className = "thumb";
+      d.innerHTML =
+        '<img src="' + it.url + '" alt="">' +
+        '<span class="no">' + (i + 1) + "</span>" +
+        (i === 0 ? '<span class="cover">封面</span>' : "") +
+        '<button type="button" class="del" title="移除">×</button>';
+      d.querySelector(".del").onclick = function () {
+        URL.revokeObjectURL(it.url);
+        picked.splice(i, 1);
+        renderThumbs();
+      };
+      box.appendChild(d);
+    });
+  }
+
+  async function addFiles(list) {
+    const arr = Array.from(list).filter(f => /^image\//.test(f.type));
+    if (!arr.length) { show("这些文件不是图片", "err"); return; }
+    const room = 20 - picked.length;
+    if (room <= 0) { show("最多 20 张，先删掉一些", "err"); return; }
+    arr.slice(0, room).forEach(f => picked.push({ file: f, url: URL.createObjectURL(f) }));
+    renderThumbs();
+    hide();
+
+    if (!$("date").value && picked.length) {
+      const g = await guessDate(picked[0].file);
+      if (g) $("date").value = g;
+    }
+  }
+
+  /* ---------- 交互 ---------- */
+  $("drop").onclick = () => $("files").click();
+  $("files").onchange = e => { addFiles(e.target.files); e.target.value = ""; };
+  ["dragenter", "dragover"].forEach(ev =>
+    $("drop").addEventListener(ev, e => { e.preventDefault(); $("drop").classList.add("over"); }));
+  ["dragleave", "drop"].forEach(ev =>
+    $("drop").addEventListener(ev, e => { e.preventDefault(); $("drop").classList.remove("over"); }));
+  $("drop").addEventListener("drop", e => { if (e.dataTransfer) addFiles(e.dataTransfer.files); });
+
+  /* ---------- 提交 ---------- */
+  $("form").addEventListener("submit", async function (e) {
+    e.preventDefault();
+    if (!session) { show("请先登录", "err"); return; }
+    if (!picked.length) { show("还没有选照片", "err"); return; }
+    const place = $("place").value.trim();
+    if (!place) { show("地点一定要填——以后就靠它搜索", "err"); return; }
+
+    const btn = $("btnSubmit");
+    const bar = $("bar"), barIn = $("barIn"), steps = $("steps");
+    btn.disabled = true; btn.textContent = "上传中…";
+    bar.classList.add("show"); steps.textContent = "";
+    hide();
+
+    const uid = session.user.id;
+    const stamp = Date.now();
+    const fullPaths = [], thumbPaths = [];
+    const total = picked.length * 2;
+    let done = 0;
+    const tick = (txt) => {
+      done++;
+      barIn.style.width = Math.round(done / (total + 1) * 100) + "%";
+      steps.textContent = txt;
+    };
+
+    try {
+      for (let i = 0; i < picked.length; i++) {
+        const f = picked[i].file;
+        const name = stamp + "-" + (i + 1) + ".jpg";
+        const fullPath = "pending/" + uid + "/" + name;
+        const thumbPath = "pending/" + uid + "/thumb/" + name;
+
+        const big = await toBlob(f, 1600, 0.82);
+        let up = await sb.storage.from(APP_CONFIG.PHOTO_BUCKET).upload(fullPath, big, { contentType: "image/jpeg", upsert: false });
+        if (up.error) throw up.error;
+        fullPaths.push(fullPath);
+        tick("已上传第 " + (i + 1) + "/" + picked.length + " 张（大图）");
+
+        const small = await toBlob(f, 600, 0.8);
+        up = await sb.storage.from(APP_CONFIG.PHOTO_BUCKET).upload(thumbPath, small, { contentType: "image/jpeg", upsert: false });
+        if (up.error) throw up.error;
+        thumbPaths.push(thumbPath);
+        tick("已上传第 " + (i + 1) + "/" + picked.length + " 张（缩略图）");
+      }
+
+      const row = {
+        date: $("date").value || null,
+        place: place,
+        city: null,
+        caption: $("caption").value.trim() || null,
+        author_display: $("author").value.trim() || null,
+        tags: $("tags").value.split(/[,，;；]/).map(s => s.trim()).filter(Boolean),
+        photos: fullPaths,
+        cover: fullPaths[0],
+        status: "pending",
+        uploader: uid
+      };
+
+      steps.textContent = "正在提交记录…";
+      const ins = await sb.from("works").insert(row).select("id").single();
+      if (ins.error) throw ins.error;
+      tick("提交完成");
+
+      show("提交成功！管理员审核通过后就会出现在首页。你的作品编号：" + ins.data.id, "ok");
+      steps.textContent = "已提交，等待审核。";
+      picked.forEach(it => URL.revokeObjectURL(it.url));
+      picked = []; renderThumbs();
+      $("form").reset();
+      btn.textContent = "再传一个作品";
+      btn.disabled = false;
+    } catch (err) {
+      show(zhError(err && err.message ? err.message : err), "err");
+      steps.textContent = "出错了，看上面的提示。";
+      btn.disabled = false; btn.textContent = "重新提交";
+    }
+  });
+
+  /* ---------- 初始化 ---------- */
+  (async function init() {
+    const ctx = await renderTopbar("upload");
+    session = ctx && ctx.session;
+    if (!session) { $("needLogin").style.display = ""; return; }
+    $("main").style.display = "";
+    $("author").value = (ctx.profile && ctx.profile.display_name) || "";
+    const d = new Date();
+    $("date").value = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  })();
+})();
+</script>
+</body>
+</html>
