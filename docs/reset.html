@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>重设密码 · 骑行回忆录</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<div class="topbar" id="topbar"></div>
+
+<div class="wrap narrow">
+  <div class="card">
+    <h1>重设密码</h1>
+    <p class="lead" id="lead">正在确认链接…</p>
+
+    <form id="form" style="display:none">
+      <label for="pwd">新密码</label>
+      <input type="password" id="pwd" required minlength="6" autocomplete="new-password" placeholder="至少 6 位">
+      <label for="pwd2">再输一次</label>
+      <input type="password" id="pwd2" required minlength="6" autocomplete="new-password" placeholder="再输一次">
+      <button class="btn block" id="btnSubmit" type="submit">保存新密码</button>
+    </form>
+
+    <div class="msg" id="msg"></div>
+    <div class="footer" style="padding:18px 0 0"><a href="login.html">回到登录页</a></div>
+  </div>
+</div>
+
+<script src="vendor/supabase.js"></script>
+<script src="config.js"></script>
+<script src="auth.js"></script>
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  const show = (t, k) => { const m = $("msg"); m.textContent = t; m.className = "msg show " + (k || "info"); };
+
+  renderTopbar("login");
+
+  // Supabase 的重置链接会带上 recovery 事件；等它把会话准备好
+  sb.auth.onAuthStateChange(function (event) {
+    if (event === "PASSWORD_RECOVERY") {
+      $("lead").textContent = "链接有效，请设置新密码。";
+      $("form").style.display = "";
+    }
+  });
+
+  // 有些情况下事件已经错过，直接看会话
+  setTimeout(async function () {
+    const s = await getSession();
+    if (s) { $("lead").textContent = "链接有效，请设置新密码。"; $("form").style.display = ""; }
+    else if ($("form").style.display === "none") {
+      $("lead").textContent = "链接无效或已过期。请回到登录页重新申请一次重置邮件。";
+      show("没有检测到有效的重置会话", "err");
+    }
+  }, 1200);
+
+  $("form").addEventListener("submit", async function (e) {
+    e.preventDefault();
+    const a = $("pwd").value, b = $("pwd2").value;
+    if (a.length < 6) { show("密码至少 6 位", "err"); return; }
+    if (a !== b) { show("两次输入的密码不一样", "err"); return; }
+    const btn = $("btnSubmit");
+    btn.disabled = true; btn.textContent = "保存中…";
+    try {
+      const { error } = await sb.auth.updateUser({ password: a });
+      if (error) throw error;
+      show("密码已更新，正在跳到登录页…", "ok");
+      setTimeout(function () { location.href = "login.html"; }, 900);
+    } catch (err) {
+      show(zhError(err && err.message ? err.message : err), "err");
+      btn.disabled = false; btn.textContent = "保存新密码";
+    }
+  });
+})();
+</script>
+</body>
+</html>

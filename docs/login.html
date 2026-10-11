@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>登录 / 注册 · 河海大学自行车协会 · 骑行回忆录</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<div class="topbar" id="topbar"></div>
+
+<div class="wrap narrow">
+
+  <!-- 已登录时显示 -->
+  <div class="card" id="doneBox" style="display:none">
+    <h3>你已经登录了</h3>
+    <p class="hint">下面是你当前的账号信息。</p>
+    <table style="width:100%;font-size:14px;border-collapse:collapse">
+      <tr><td style="color:var(--dim);padding:6px 0;width:96px">昵称</td><td id="whoName"></td></tr>
+      <tr><td style="color:var(--dim);padding:6px 0">邮箱</td><td id="whoEmail"></td></tr>
+      <tr><td style="color:var(--dim);padding:6px 0">管理员</td><td id="whoAdmin"></td></tr>
+    </table>
+    <div style="margin-top:20px;display:flex;gap:10px;flex-wrap:wrap">
+      <a class="btn" href="upload.html">去上传照片</a>
+      <button class="btn ghost" id="btnOut">退出登录</button>
+    </div>
+  </div>
+
+  <!-- 未登录时显示 -->
+  <div class="card" id="authBox">
+    <h1 id="pageTitle">登录</h1>
+    <p class="lead" id="pageLead">登录后可以上传照片；浏览不需要登录。</p>
+
+    <div class="tabs">
+      <button id="tabLogin" class="on">登录</button>
+      <button id="tabSignup">注册</button>
+    </div>
+
+    <form id="form" autocomplete="on">
+      <div id="nickWrap" style="display:none">
+        <label for="nick">昵称（会显示在作品上）</label>
+        <input type="text" id="nick" maxlength="24" placeholder="例如：阿凯">
+      </div>
+
+      <label for="email">邮箱</label>
+      <input type="email" id="email" required autocomplete="email" placeholder="你常用的邮箱">
+
+      <label for="pwd">密码</label>
+      <input type="password" id="pwd" required minlength="6" autocomplete="current-password" placeholder="至少 6 位">
+      <div style="margin-top:6px">
+        <a href="#" id="lnkReset" style="font-size:13px">忘记密码？</a>
+      </div>
+
+      <button class="btn block" id="btnSubmit" type="submit">登录</button>
+    </form>
+
+    <div class="msg" id="msg"></div>
+  </div>
+
+  <div class="footer">
+    浏览不需要登录 · 上传需要登录 · <a href="index.html">回到首页</a>
+  </div>
+</div>
+
+<script src="vendor/supabase.js"></script>
+<script src="config.js"></script>
+<script src="auth.js"></script>
+<script>
+(function () {
+  let mode = "login";                       // login | signup
+  let next = new URLSearchParams(location.search).get("next") || "index.html";
+
+  const $ = id => document.getElementById(id);
+  const show = (text, kind) => { const m = $("msg"); m.textContent = text; m.className = "msg show " + (kind || "info"); };
+  const hide = () => { $("msg").className = "msg"; };
+
+  function setMode(m) {
+    mode = m;
+    const isLogin = m === "login";
+    $("tabLogin").className = isLogin ? "on" : "";
+    $("tabSignup").className = isLogin ? "" : "on";
+    $("nickWrap").style.display = isLogin ? "none" : "";
+    $("pageTitle").textContent = isLogin ? "登录" : "注册";
+    $("pageLead").textContent = isLogin
+      ? "登录后可以上传照片；浏览不需要登录。"
+      : "注册后即可上传照片。我们会给你发一封验证邮件。";
+    $("btnSubmit").textContent = isLogin ? "登录" : "注册";
+    $("pwd").setAttribute("autocomplete", isLogin ? "current-password" : "new-password");
+    hide();
+  }
+
+  $("tabLogin").onclick = () => setMode("login");
+  $("tabSignup").onclick = () => setMode("signup");
+
+  $("form").addEventListener("submit", async function (e) {
+    e.preventDefault();
+    const email = $("email").value.trim();
+    const pwd = $("pwd").value;
+    const nick = $("nick").value.trim();
+    if (!email || !pwd) { show("邮箱和密码都要填", "err"); return; }
+
+    const btn = $("btnSubmit");
+    btn.disabled = true;
+    const old = btn.textContent;
+    btn.textContent = mode === "login" ? "登录中…" : "提交中…";
+    hide();
+
+    try {
+      if (mode === "login") {
+        const { data, error } = await sb.auth.signInWithPassword({ email: email, password: pwd });
+        if (error) throw error;
+        show("登录成功，正在跳转…", "ok");
+        setTimeout(() => { location.href = next; }, 500);
+      } else {
+        const { data, error } = await sb.auth.signUp({
+          email: email,
+          password: pwd,
+          options: { data: { display_name: nick || email.split("@")[0] } }
+        });
+        if (error) throw error;
+        if (data.session) {
+          show("注册成功，已自动登录，正在跳转…", "ok");
+          setTimeout(() => { location.href = next; }, 600);
+        } else {
+          show("注册成功！我们给 " + email + " 发了一封验证邮件，请点开里面的链接，然后回来登录。"
+               + "（收不到就看垃圾邮件；验证过再登录即可）", "ok");
+          setMode("login");
+        }
+      }
+    } catch (err) {
+      show(zhError(err && err.message ? err.message : err), "err");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = old;
+    }
+  });
+
+  // 忘记密码：给邮箱发重置链接
+  $("lnkReset").onclick = async function (e) {
+    e.preventDefault();
+    const email = $("email").value.trim();
+    if (!email) { show("请先填上邮箱，再点『忘记密码』", "err"); return; }
+    const resetTo = location.origin + location.pathname.replace(/login\.html$/, "reset.html");
+    try {
+      const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: resetTo });
+      if (error) throw error;
+      show("重置链接已发到 " + email + "，请到邮箱里点开（收不到就看垃圾邮件）", "ok");
+    } catch (err) {
+      show(zhError(err && err.message ? err.message : err), "err");
+    }
+  };
+
+  // 初始化：先看登录态
+  (async function init() {
+    const ctx = await renderTopbar("login");
+    if (ctx && ctx.session) {
+      $("authBox").style.display = "none";
+      $("doneBox").style.display = "";
+      $("whoName").textContent = (ctx.profile && ctx.profile.display_name) || "（未设置）";
+      $("whoEmail").textContent = ctx.session.user.email;
+      $("whoAdmin").textContent = ctx.isAdmin ? "是 —— 可以进审核页" : "否";
+      $("btnOut").onclick = () => signOut();
+    } else {
+      setMode("login");
+    }
+  })();
+})();
+</script>
+</body>
+</html>
