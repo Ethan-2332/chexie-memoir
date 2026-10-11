@@ -86,27 +86,41 @@
       ];
       if (session) links.push(["my.html", "我的投稿", "my"]);
 
-      // 管理员：查一下待审数量，在"审核"旁边显示红色角标
-      let pending = 0;
+      // 计数：待审作品（管理员看）、待审的"加照片申请"（作品集作者或管理员看）
+      let pendingWorks = 0, pendingReqs = 0;
+      if (session) {
+        try {
+          const rq = await sb.from("photo_requests")
+            .select("id", { count: "exact", head: true })
+            .eq("status", "pending")
+            .neq("requester", session.user.id);   // 自己的申请不用自己审
+          pendingReqs = rq.count || 0;
+        } catch (e) { console.warn("加照片申请计数失败:", e); }
+      }
       if (isAdmin) {
         try {
           const c = await sb.from("works").select("id", { count: "exact", head: true }).eq("status", "pending");
-          pending = c.count || 0;
-        } catch (e) { console.warn("待审计数失败:", e); }
+          pendingWorks = c.count || 0;
+        } catch (e) { console.warn("待审作品计数失败:", e); }
         links.push(["review.html", "审核", "review"]);
       }
+      if (pendingReqs > 0) links.push(["requests.html", "申请审核", "requests"]);
 
-      const badge = pending > 0
-        ? '<em style="font-style:normal;background:#d93025;color:#fff;border-radius:999px;' +
-          'padding:0 6px;margin-left:5px;font-size:11.5px;line-height:17px;display:inline-block">' + pending + "</em>"
-        : "";
+      const mkBadge = function (n) {
+        return n > 0
+          ? '<em style="font-style:normal;background:#d93025;color:#fff;border-radius:999px;' +
+            'padding:0 6px;margin-left:5px;font-size:11.5px;line-height:17px;display:inline-block">' + n + "</em>"
+          : "";
+      };
 
       el.innerHTML =
         '<a class="brand" href="index.html">' + esc(cfg.SITE_TITLE) + "</a>" +
         '<nav class="nav">' +
           links.map(function (l) {
-            return '<a href="' + l[0] + '"' + (active === l[2] ? ' class="on"' : "") + ">" +
-                   l[1] + (l[2] === "review" ? badge : "") + "</a>";
+            let b = "";
+            if (l[2] === "review") b = mkBadge(pendingWorks);
+            if (l[2] === "requests") b = mkBadge(pendingReqs);
+            return '<a href="' + l[0] + '"' + (active === l[2] ? ' class="on"' : "") + ">" + l[1] + b + "</a>";
           }).join("") +
           (session
             ? '<span class="who" title="' + esc(session.user.email) + '">' + esc(name) +
