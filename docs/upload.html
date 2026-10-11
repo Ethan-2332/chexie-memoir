@@ -267,13 +267,23 @@
 
   /* ---------- 初始化 ---------- */
   (async function init() {
-    const ctx = await renderTopbar("upload");
-    session = ctx && ctx.session;
-    if (!session) { $("needLogin").style.display = ""; return; }
-    $("main").style.display = "";
-    $("author").value = (ctx.profile && ctx.profile.display_name) || "";
-    const d = new Date();
-    $("date").value = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+    try {
+      const ctx = await renderTopbar("upload");
+      session = ctx && ctx.session;
+      if (!session) { $("needLogin").style.display = ""; return; }
+      $("main").style.display = "";
+      $("author").value = (ctx.profile && ctx.profile.display_name) || "";
+      const d = new Date();
+      $("date").value = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+    } catch (err) {
+      // 任何异常都要让人看见，而不是白屏
+      $("needLogin").style.display = "none";
+      $("main").style.display = "";
+      const m = $("msg");
+      m.textContent = "页面初始化出错：" + (err && err.message ? err.message : err) +
+                      "  —— 请打开 diag.html 并把结果截图发给管理员。";
+      m.className = "msg show err";
+    }
   })();
 })();
 </script>

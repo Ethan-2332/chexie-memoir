@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>诊断 · 骑行回忆录</title>
+<link rel="stylesheet" href="app.css">
+<style>
+  .diag{font-size:14px}
+  .diag .item{padding:11px 13px;border:1px solid var(--line);border-radius:10px;margin-bottom:9px;background:#fff}
+  .diag .item.ok{border-color:#b7e1c1;background:#f3fbf5}
+  .diag .item.bad{border-color:#f3b8b3;background:#fdf3f2}
+  .diag .item.warn{border-color:#f2e0a8;background:#fffdf3}
+  .diag b{display:block;font-size:13.5px}
+  .diag span{color:var(--dim);word-break:break-all;font-size:12.5px}
+  pre{background:#f5f7fa;border:1px solid var(--line);border-radius:8px;padding:10px;font-size:12px;overflow:auto;max-height:220px}
+  code{background:#eef1f5;padding:1px 5px;border-radius:4px;font-size:12.5px}
+</style>
+</head>
+<body>
+
+<div class="topbar" id="topbar"></div>
+
+<div class="wrap">
+  <h1>诊断</h1>
+  <p class="lead">这一页会逐步检查"打开网站需要的每一环"，把结果直接列出来。出问题时把整页截图发给管理员即可。</p>
+
+  <div class="diag" id="out"></div>
+
+  <div class="card">
+    <h3>浏览器报错记录</h3>
+    <p class="hint">如果下面有内容，说明页面脚本出错了——这段最有用，请一并截图。</p>
+    <pre id="errs">（暂无）</pre>
+  </div>
+
+  <div class="card">
+    <h3>当前地址</h3>
+    <pre id="loc"></pre>
+  </div>
+
+  <div class="footer"><a href="index.html">回到首页</a></div>
+</div>
+
+<!-- 故意不用 auth.js，先手工把每一层都试一遍 -->
+<script src="vendor/supabase.js"></script>
+<script src="config.js"></script>
+<script>
+(function () {
+  const out = document.getElementById("out");
+  const errs = [];
+  window.addEventListener("error", e => errs.push("error: " + (e.message || e) + " @" + (e.filename || "") + ":" + (e.lineno || "")));
+  window.addEventListener("unhandledrejection", e => errs.push("rejection: " + ((e.reason && (e.reason.message || e.reason)) || e)));
+
+  document.getElementById("loc").textContent =
+    "页面地址: " + location.href + "\n来源(origin): " + location.origin + "\n协议: " + location.protocol;
+
+  function add(title, state, detail) {
+    const d = document.createElement("div");
+    d.className = "item " + state;
+    d.innerHTML = "<b>" + title + "</b><span></span>";
+    d.querySelector("span").textContent = detail || "";
+    out.appendChild(d);
+  }
+
+  async function run() {
+    // 1. 库是否加载
+    const hasLib = !!(window.supabase && window.supabase.createClient);
+    add("1. supabase.js 库", hasLib ? "ok" : "bad",
+        hasLib ? "已加载，版本相关 API 正常" : "没加载到 —— 后面的检查都没意义");
+
+    // 2. 配置是否读取
+    const cfg = window.APP_CONFIG;
+    add("2. config.js 配置", cfg && cfg.SUPABASE_URL ? "ok" : "bad",
+        cfg ? ("URL = " + cfg.SUPABASE_URL + "\nkey 前缀 = " + String(cfg.SUPABASE_KEY || "").slice(0, 16) + "…") : "没读到配置");
+
+    if (!hasLib || !cfg) { done(); return; }
+
+    // 3. 能否连上 Supabase（带超时）
+    const sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_KEY);
+    const t0 = Date.now();
+    try {
+      const r = await Promise.race([
+        sb.from("works").select("id").limit(1),
+        new Promise((_, rej) => setTimeout(() => rej(new Error("超时（15 秒）")), 15000))
+      ]);
+      const ms = Date.now() - t0;
+      if (r.error) add("3. 连接 Supabase 数据库", "bad", "失败（" + ms + " ms）：" + r.error.message + "\n代码：" + (r.error.code || "") + "  详情：" + (r.error.details || ""));
+      else add("3. 连接 Supabase 数据库", "ok", "成功（" + ms + " ms），读到的作品数 = " + (r.data ? r.data.length : 0));
+    } catch (e) {
+      add("3. 连接 Supabase 数据库", "bad", "异常（" + (Date.now() - t0) + " ms）：" + (e.message || e));
+    }
+
+    // 4. 登录态
+    try {
+      const g = await Promise.race([
+        sb.auth.getSession(),
+        new Promise((_, rej) => setTimeout(() => rej(new Error("超时（15 秒）")), 15000))
+      ]);
+      const s = g && g.data ? g.data.session : null;
+      if (s) add("4. 登录状态", "ok", "已登录：" + s.user.email + "\n用户 id：" + s.user.id + "\n令牌到期：" + s.expires_at);
+      else add("4. 登录状态", "warn", "未登录（如果你刚刚登录过却是这个结果，说明浏览器没存住登录态，把这一行截图给管理员）");
+    } catch (e) {
+      add("4. 登录状态", "bad", "查询异常：" + (e.message || e));
+    }
+
+    // 5. 档案（profiles）——判断管理员身份
+    try {
+      const g2 = await sb.auth.getUser();
+      const u = g2 && g2.data ? g2.data.user : null;
+      if (!u) { add("5. 用户档案 / 管理员标记", "warn", "没登录，跳过"); }
+      else {
+        const p = await sb.from("profiles").select("display_name, is_admin").eq("id", u.id).maybeSingle();
+        if (p.error) add("5. 用户档案 / 管理员标记", "bad", "读取失败：" + p.error.message + "\n代码：" + (p.error.code || ""));
+        else if (!p.data) add("5. 用户档案 / 管理员标记", "warn", "没有档案记录（注册时触发器可能没生效）");
+        else add("5. 用户档案 / 管理员标记", "ok", "昵称 = " + (p.data.display_name || "(空)") + "\n管理员 = " + (p.data.is_admin ? "是" : "否"));
+      }
+    } catch (e) {
+      add("5. 用户档案 / 管理员标记", "bad", "异常：" + (e.message || e));
+    }
+
+    // 6. 照片桶是否可公开读
+    try {
+      const u2 = cfg.SUPABASE_URL + "/storage/v1/object/public/" + cfg.PHOTO_BUCKET + "/";
+      const r2 = await fetch(u2, { method: "GET" });
+      add("6. 照片桶（photos）", (r2.status === 401 || r2.status === 403) ? "bad" : "ok",
+          "HTTP " + r2.status + "（401/403 说明桶不是公开读）");
+    } catch (e) {
+      add("6. 照片桶（photos）", "bad", "请求异常：" + (e.message || e) + "（可能是网络不通）");
+    }
+
+    done();
+  }
+
+  function done() {
+    document.getElementById("errs").textContent = errs.length ? errs.join("\n\n") : "（暂无）";
+    add("完成", "ok", "以上是全部检查。请把整页截图发给管理员。");
+  }
+
+  run();
+})();
+</script>
+</body>
+</html>

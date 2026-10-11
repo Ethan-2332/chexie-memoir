@@ -63,36 +63,49 @@
   window.renderTopbar = async function (active) {
     const el = document.getElementById("topbar");
     if (!el) return null;
-    const session = await getSession();
-    let profile = null, isAdmin = false;
-    if (session) {
-      profile = await getProfile(session.user.id);
-      isAdmin = !!(profile && profile.is_admin);
+    const fallback = function () {
+      // 任何异常都退回到"只显示导航"，绝不让顶栏整块消失
+      el.innerHTML =
+        '<a class="brand" href="index.html">' + esc(cfg.SITE_TITLE) + "</a>" +
+        '<nav class="nav"><a href="index.html">首页</a><a href="upload.html">上传</a>' +
+        '<a class="btn small" href="login.html">登录</a></nav>';
+      return { session: null, profile: null, isAdmin: false, failed: true };
+    };
+    try {
+      const session = await getSession();
+      let profile = null, isAdmin = false;
+      if (session) {
+        profile = await getProfile(session.user.id);
+        isAdmin = !!(profile && profile.is_admin);
+      }
+      const name = (profile && profile.display_name) || (session ? session.user.email : "");
+
+      const links = [
+        ["index.html", "首页", "index"],
+        ["upload.html", "上传", "upload"]
+      ];
+      if (isAdmin) links.push(["review.html", "审核", "review"]);
+
+      el.innerHTML =
+        '<a class="brand" href="index.html">' + esc(cfg.SITE_TITLE) + "</a>" +
+        '<nav class="nav">' +
+          links.map(function (l) {
+            return '<a href="' + l[0] + '"' + (active === l[2] ? ' class="on"' : "") + ">" + l[1] + "</a>";
+          }).join("") +
+          (session
+            ? '<span class="who" title="' + esc(session.user.email) + '">' + esc(name) +
+              (isAdmin ? '<em class="tag">管理员</em>' : "") + "</span>" +
+              '<button class="linkbtn" id="btnSignOut">退出</button>'
+            : '<a class="btn small" href="login.html">登录</a>') +
+        "</nav>";
+
+      const out = document.getElementById("btnSignOut");
+      if (out) out.onclick = function () { signOut(); };
+      return { session: session, profile: profile, isAdmin: isAdmin };
+    } catch (err) {
+      console.error("renderTopbar 失败:", err);
+      return fallback();
     }
-    const name = (profile && profile.display_name) || (session ? session.user.email : "");
-
-    const links = [
-      ["index.html", "首页", "index"],
-      ["upload.html", "上传", "upload"]
-    ];
-    if (isAdmin) links.push(["review.html", "审核", "review"]);
-
-    el.innerHTML =
-      '<a class="brand" href="index.html">' + esc(cfg.SITE_TITLE) + "</a>" +
-      '<nav class="nav">' +
-        links.map(function (l) {
-          return '<a href="' + l[0] + '"' + (active === l[2] ? ' class="on"' : "") + ">" + l[1] + "</a>";
-        }).join("") +
-        (session
-          ? '<span class="who" title="' + esc(session.user.email) + '">' + esc(name) +
-            (isAdmin ? '<em class="tag">管理员</em>' : "") + "</span>" +
-            '<button class="linkbtn" id="btnSignOut">退出</button>'
-          : '<a class="btn small" href="login.html">登录</a>') +
-      "</nav>";
-
-    const out = document.getElementById("btnSignOut");
-    if (out) out.onclick = function () { signOut(); };
-    return { session: session, profile: profile, isAdmin: isAdmin };
   };
 
   /* ---------- 小工具 ---------- */
