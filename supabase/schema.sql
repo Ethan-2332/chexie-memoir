@@ -92,6 +92,12 @@ create policy works_own_read on public.works
   for select to authenticated
   using (uploader = auth.uid());
 
+-- works：管理员能读全部（含别人待审的）—— 审核页靠这条
+drop policy if exists works_admin_read on public.works;
+create policy works_admin_read on public.works
+  for select to authenticated
+  using (public.is_admin());
+
 drop policy if exists works_insert_pending on public.works;
 create policy works_insert_pending on public.works
   for insert to authenticated
