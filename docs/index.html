@@ -59,6 +59,7 @@
   .grid{max-width:1140px;margin:14px auto 60px;padding:0 24px;display:grid;grid-template-columns:repeat(auto-fill,minmax(248px,1fr));gap:18px}
   .card{border:1px solid var(--line);background:var(--card);border-radius:var(--radius);overflow:hidden;padding:0;cursor:pointer;text-align:left;font:inherit;color:inherit;transition:transform .16s, box-shadow .16s, border-color .16s;position:relative}
   .card:hover{transform:translateY(-3px);box-shadow:0 10px 26px rgba(23,32,42,.10);border-color:#dfe4ec}
+  .card:active{transform:scale(.994);border-color:#c9d6e8}
   .card img{width:100%;aspect-ratio:4/3;object-fit:cover;display:block;background:#eef1f5}
   .cap{padding:12px 14px 14px}
   .line1{display:flex;align-items:baseline;gap:8px;font-size:12.5px;color:var(--dim)}
@@ -97,6 +98,33 @@
 </style>
 </head>
 <body>
+
+<!-- 任何脚本错误都会在这里以红条显示，方便一眼看出问题 -->
+<div id="_errbar" style="display:none;position:fixed;left:0;right:0;top:0;z-index:9999;background:#a50e0e;color:#fff;font-size:13px;padding:10px 14px;line-height:1.6;word-break:break-all"></div>
+<script>
+(function () {
+  var bar = document.getElementById("_errbar");
+  function show(msg) {
+    if (!bar) return;
+    bar.style.display = "";
+    bar.textContent = "页面出错（请把这一行截图发给管理员）：" + msg;
+  }
+  window.addEventListener("error", function (e) {
+    show((e.message || e) + "  @" + String(e.filename || "").split("/").pop() + ":" + (e.lineno || ""));
+  });
+  window.addEventListener("unhandledrejection", function (e) {
+    var r = e.reason;
+    show("异步错误: " + ((r && r.message) || r));
+  });
+  window.addEventListener("load", function () {
+    setTimeout(function () {
+      if (!window.sb) { show("Supabase 库没加载成功（vendor/supabase.js）"); return; }
+      var g = document.getElementById("grid");
+      if (g && g.textContent.indexOf("正在加载") !== -1) show("作品加载超时：连不上数据库，或网络被拦");
+    }, 9000);
+  });
+})();
+</script>
 
 <div class="topbar" id="topbar"></div>
 
@@ -246,7 +274,7 @@
       card.className = "card";
       card.innerHTML =
         '<img src="' + esc(p.coverThumb) + '" alt="' + esc(p.place) + '" loading="lazy">' +
-        (p.count > 1 ? '<span class="badge">' + p.count + " 张</span>" : "") +
+        (p.count > 1 ? '<span class="badge">' + p.count + " 张 · 点开看</span>" : "") +
         '<div class="cap">' +
           '<div class="line1"><span class="date">' + esc(p.date || "无日期") + "</span>" +
           (p.place ? '<span class="place">' + esc(p.place) + "</span>" : "") + "</div>" +
