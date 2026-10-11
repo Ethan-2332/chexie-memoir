@@ -160,6 +160,16 @@ create policy photos_admin_all on storage.objects
   using (bucket_id = 'photos' and public.is_admin())
   with check (bucket_id = 'photos' and public.is_admin());
 
+-- 上传者可以撤回（删除）自己还没通过的照片 —— 「我的投稿」页的撤回功能靠这条
+drop policy if exists photos_delete_own on storage.objects;
+create policy photos_delete_own on storage.objects
+  for delete to authenticated
+  using (
+    bucket_id = 'photos'
+    and (storage.foldername(name))[1] = 'pending'
+    and (storage.foldername(name))[2] = auth.uid()::text
+  );
+
 -- ============================================================
 --  6. 自检：跑完之后看这几行输出
 -- ============================================================

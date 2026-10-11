@@ -84,13 +84,29 @@
         ["index.html", "首页", "index"],
         ["upload.html", "上传", "upload"]
       ];
-      if (isAdmin) links.push(["review.html", "审核", "review"]);
+      if (session) links.push(["my.html", "我的投稿", "my"]);
+
+      // 管理员：查一下待审数量，在"审核"旁边显示红色角标
+      let pending = 0;
+      if (isAdmin) {
+        try {
+          const c = await sb.from("works").select("id", { count: "exact", head: true }).eq("status", "pending");
+          pending = c.count || 0;
+        } catch (e) { console.warn("待审计数失败:", e); }
+        links.push(["review.html", "审核", "review"]);
+      }
+
+      const badge = pending > 0
+        ? '<em style="font-style:normal;background:#d93025;color:#fff;border-radius:999px;' +
+          'padding:0 6px;margin-left:5px;font-size:11.5px;line-height:17px;display:inline-block">' + pending + "</em>"
+        : "";
 
       el.innerHTML =
         '<a class="brand" href="index.html">' + esc(cfg.SITE_TITLE) + "</a>" +
         '<nav class="nav">' +
           links.map(function (l) {
-            return '<a href="' + l[0] + '"' + (active === l[2] ? ' class="on"' : "") + ">" + l[1] + "</a>";
+            return '<a href="' + l[0] + '"' + (active === l[2] ? ' class="on"' : "") + ">" +
+                   l[1] + (l[2] === "review" ? badge : "") + "</a>";
           }).join("") +
           (session
             ? '<span class="who" title="' + esc(session.user.email) + '">' + esc(name) +
