@@ -38,7 +38,12 @@
   <div class="card" id="needLogin" style="display:none">
     <h3>上传需要先登录</h3>
     <p class="hint">浏览不需要登录，但上传照片要确认你是协会成员。</p>
-    <a class="btn" href="login.html?next=upload.html">去登录 / 注册</a>
+    <p class="hint" id="noLoginWhy" style="color:var(--danger)"></p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <a class="btn" href="login.html?next=upload.html">去登录 / 注册</a>
+      <button class="btn ghost" id="btnRecheck" type="button">我刚刚登录过，重新检测</button>
+      <a class="btn ghost" href="diag.html">打开诊断页</a>
+    </div>
   </div>
 
   <div id="main" style="display:none">
@@ -266,15 +271,38 @@
   });
 
   /* ---------- 初始化 ---------- */
-  (async function init() {
-    try {
-      const ctx = await renderTopbar("upload");
-      session = ctx && ctx.session;
-      if (!session) { $("needLogin").style.display = ""; return; }
-      $("main").style.display = "";
-      $("author").value = (ctx.profile && ctx.profile.display_name) || "";
+  async function checkLogin() {
+    const ctx = await renderTopbar("upload");
+    session = ctx && ctx.session;
+    if (!session) {
+      $("main").style.display = "none";
+      $("needLogin").style.display = "";
+      $("noLoginWhy").textContent = "当前没有检测到登录状态。"
+        + (ctx && ctx.failed ? "（顶栏渲染也失败了，请点『打开诊断页』看看）" : "")
+        + " 如果你确信已经登录过，点中间那个按钮重新检测一次。";
+      return false;
+    }
+    $("needLogin").style.display = "none";
+    $("main").style.display = "";
+    $("author").value = (ctx.profile && ctx.profile.display_name) || "";
+    if (!$("date").value) {
       const d = new Date();
       $("date").value = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+    }
+    return true;
+  }
+
+  $("btnRecheck").onclick = async function () {
+    const b = $("btnRecheck");
+    b.disabled = true; b.textContent = "检测中…";
+    try { await checkLogin(); toast("已重新检测登录状态"); }
+    catch (e) { toast("检测失败：" + (e.message || e), "err"); }
+    b.disabled = false; b.textContent = "我刚刚登录过，重新检测";
+  };
+
+  (async function init() {
+    try {
+      await checkLogin();
     } catch (err) {
       // 任何异常都要让人看见，而不是白屏
       $("needLogin").style.display = "none";
