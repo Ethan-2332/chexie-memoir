@@ -122,9 +122,33 @@
     position:absolute;right:10px;top:10px;background:rgba(0,0,0,.55);color:#fff;
     font-size:12px;padding:2px 8px;border-radius:999px;
   }
+  /* 顶部导航条（与 login/upload 页共用 app.css 的样式约定） */
+  .topbar{
+    display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;
+    background:#fff;border-bottom:1px solid var(--line);padding:11px 20px;
+    font-size:14px;
+  }
+  .topbar .brand{font-weight:650;color:var(--ink);font-size:15px;text-decoration:none}
+  .topbar .nav{display:flex;align-items:center;gap:14px}
+  .topbar .nav a{color:var(--dim);text-decoration:none}
+  .topbar .nav a.on{color:var(--accent);font-weight:600}
+  .topbar .nav a:hover{color:var(--ink)}
+  .topbar .who{color:var(--dim);font-size:13px}
+  .topbar .tag{
+    font-style:normal;background:var(--accent-soft);color:var(--accent);
+    border-radius:6px;padding:1px 6px;margin-left:6px;font-size:12px;
+  }
+  .topbar .linkbtn{border:0;background:none;color:var(--dim);cursor:pointer;font:inherit;font-size:13px;padding:4px 6px;border-radius:6px}
+  .topbar .linkbtn:hover{background:#eef1f5;color:var(--ink)}
+  .topbar .btn.small{
+    background:var(--accent);color:#fff;border-radius:8px;padding:7px 13px;
+    font-size:13.5px;font-weight:600;text-decoration:none;display:inline-block;
+  }
 </style>
 </head>
 <body>
+
+<div class="topbar" id="topbar"></div>
 
 <header>
   <h1>河海大学自行车协会 · 骑行回忆录</h1>
@@ -145,7 +169,7 @@
 <div class="meta" id="meta"></div>
 <div class="grid" id="grid"></div>
 
-<footer>投稿/上传即视为授权本网站展示；如需下架请联系协会管理员。本页不显示学号。<br>共 1 个作品 · 页面生成于 2026-10-11 23:36</footer>
+<footer>投稿/上传即视为授权本网站展示；如需下架请联系协会管理员。本页不显示学号。<br>共 1 个作品 · 页面生成于 2026-10-12 00:21</footer>
 
 <div class="lb" id="lb" hidden>
   <button class="lbclose" id="lbclose" title="关闭">×</button>
@@ -165,6 +189,9 @@
   </div>
 </div>
 
+<script src="vendor/supabase.js"></script>
+<script src="config.js"></script>
+<script src="auth.js"></script>
 <script>const POSTS = {"site": {"title": "河海大学自行车协会 · 骑行回忆录", "subtitle": "收集同学们的骑行照片，按日期和地点翻阅", "notice": "投稿/上传即视为授权本网站展示；如需下架请联系协会管理员。本页不显示学号。"}, "posts": [{"id": "w001", "date": "2026-10-11", "place": "天目湖-大溪水库", "city": "", "author": "zyh", "caption": "今天真的好累", "tags": [], "photo": "photos/w001/1.jpg", "thumb": "photos/w001/thumb/1.jpg", "photos": ["photos/w001/1.jpg", "photos/w001/2.jpg", "photos/w001/3.jpg", "photos/w001/4.jpg", "photos/w001/5.jpg", "photos/w001/6.jpg"], "thumbs": ["photos/w001/thumb/1.jpg", "photos/w001/thumb/2.jpg", "photos/w001/thumb/3.jpg", "photos/w001/thumb/4.jpg", "photos/w001/thumb/5.jpg", "photos/w001/thumb/6.jpg"], "status": "published", "source": "2026.10.11天目湖-大溪水库"}]};</script>
 <script>
 (function(){
@@ -335,6 +362,9 @@
     const q0 = new URLSearchParams(location.search).get('q');
     if (q0) { query = q0.trim(); $('q').value = query; }
   } catch (e) { /* file:// 下个别浏览器不支持，忽略即可 */ }
+
+  // 顶部导航（含登录状态；上传、审核入口都在这里）
+  if (window.renderTopbar) renderTopbar("index");
 
   buildChips();
   syncSearchBox();
