@@ -1,0 +1,6 @@
+﻿中间产物/
+__pycache__/
+*.pyc
+Thumbs.db
+.DS_Store
+源文件/

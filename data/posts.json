@@ -1,0 +1,38 @@
+{
+  "site": {
+    "title": "河海大学自行车协会 · 骑行回忆录",
+    "subtitle": "收集同学们的骑行照片，按日期和地点翻阅",
+    "notice": "投稿/上传即视为授权本网站展示；如需下架请联系协会管理员。本页不显示学号。"
+  },
+  "posts": [
+    {
+      "id": "w001",
+      "date": "2026-10-11",
+      "place": "天目湖-大溪水库",
+      "city": "",
+      "author": "",
+      "caption": "",
+      "tags": [],
+      "photo": "photos/w001/1.jpg",
+      "thumb": "photos/w001/thumb/1.jpg",
+      "photos": [
+        "photos/w001/1.jpg",
+        "photos/w001/2.jpg",
+        "photos/w001/3.jpg",
+        "photos/w001/4.jpg",
+        "photos/w001/5.jpg",
+        "photos/w001/6.jpg"
+      ],
+      "thumbs": [
+        "photos/w001/thumb/1.jpg",
+        "photos/w001/thumb/2.jpg",
+        "photos/w001/thumb/3.jpg",
+        "photos/w001/thumb/4.jpg",
+        "photos/w001/thumb/5.jpg",
+        "photos/w001/thumb/6.jpg"
+      ],
+      "status": "published",
+      "source": "2026.10.11天目湖-大溪水库"
+    }
+  ]
+}
