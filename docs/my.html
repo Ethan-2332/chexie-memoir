@@ -36,6 +36,10 @@
     <p class="lead">你提交过的作品和它们的审核状态。审核通过后会自动出现在首页。</p>
     <div style="margin-bottom:20px"><a class="btn" href="upload.html">再传一个作品</a></div>
     <div id="list"></div>
+
+    <h2 style="margin:36px 0 8px;font-size:18px;font-weight:650">我申请加照片的记录</h2>
+    <p class="hint" style="margin:0 0 14px">你在别人作品集右下角点「+」提交的申请，都显示在这里。</p>
+    <div id="reqList"></div>
   </div>
 
   <div class="msg" id="msg"></div>
@@ -136,6 +140,95 @@
     render(r.data || []);
   }
 
+  /* ---------- 我申请加照片的记录 ---------- */
+  const RLABEL = { pending: "待处理", approved: "已通过", rejected: "已驳回" };
+  let works = {};
+
+  async function withdrawReq(r) {
+    const paths = [];
+    (r.photos || []).forEach(function (p) {
+      paths.push(p);
+      paths.push(p.replace(/\/([^/]+)$/, "/thumb/$1"));
+    });
+    if (paths.length) {
+      const rm = await sb.storage.from(APP_CONFIG.PHOTO_BUCKET).remove(paths);
+      if (rm.error) console.warn("照片删除失败（可能已不存在）:", rm.error);
+    }
+    const d = await sb.from("photo_requests").delete().eq("id", r.id);
+    if (d.error) throw d.error;
+  }
+
+  function renderReqs(list) {
+    const box = $("reqList");
+    box.innerHTML = "";
+    if (!list.length) {
+      box.innerHTML = '<p class="empty">还没有申请记录。<br>' +
+        '在首页任意作品集右下角点「+」，就能申请把你的照片加进去。</p>';
+      return;
+    }
+    list.forEach(function (r) {
+      const w = works[r.work_id] || {};
+      const coverRaw = w.cover || (w.photos || [])[0] || "";
+      const el = document.createElement("div");
+      el.className = "item";
+      el.innerHTML =
+        '<img class="cover" src="' + esc(thumbUrl(coverRaw)) + '" alt="">' +
+        '<div class="body">' +
+          '<div class="title">' +
+            '<span class="date">申请加入</span>' +
+            '<span class="place">' + esc(w.place || "（作品集暂不可见）") + "</span>" +
+            '<span class="badge ' + esc(r.status) + '">' + (RLABEL[r.status] || r.status) + "</span>" +
+          "</div>" +
+          '<div class="meta">' +
+            "申请加入 " + (r.photos || []).length + " 张照片" +
+            "<br>提交时间：" + esc(String(r.created_at || "").replace("T", " ").slice(0, 19)) +
+            (r.message ? "<br>我的留言：" + esc(r.message) : "") +
+            (r.reject_reason ? "<br>对方备注：" + esc(r.reject_reason) : "") +
+            (r.status === "pending" ? "<br>正在等待作品集作者或管理员处理。" : "") +
+          "</div>" +
+        "</div>" +
+        '<div class="acts"></div>';
+
+      const im = el.querySelector("img.cover");
+      im.onerror = function () { this.onerror = null; this.src = photoUrl(coverRaw); };
+      if (coverRaw) im.onclick = function () { window.open(photoUrl(coverRaw), "_blank"); };
+
+      if (r.status === "pending") {
+        const b = document.createElement("button");
+        b.className = "btn small ghost";
+        b.textContent = "撤回申请";
+        b.onclick = async function () {
+          if (!confirm("确定撤回这个申请？你上传的照片会一起删掉，不可恢复。")) return;
+          b.disabled = true; b.textContent = "处理中…";
+          try { await withdrawReq(r); await loadReqs(); }
+          catch (err) {
+            show(zhError(err && err.message ? err.message : err), "err");
+            b.disabled = false; b.textContent = "撤回申请";
+          }
+        };
+        el.querySelector(".acts").appendChild(b);
+      }
+      box.appendChild(el);
+    });
+  }
+
+  async function loadReqs() {
+    const r = await sb.from("photo_requests").select("*")
+      .eq("requester", session.user.id)
+      .order("created_at", { ascending: false })
+      .limit(200);
+    if (r.error) throw r.error;
+    const list = r.data || [];
+    const ids = Array.from(new Set(list.map(function (x) { return x.work_id; }).filter(Boolean)));
+    works = {};
+    if (ids.length) {
+      const w = await sb.from("works").select("id,place,date,cover,photos").in("id", ids);
+      if (!w.error) (w.data || []).forEach(function (x) { works[x.id] = x; });
+      else console.warn("作品集信息读取失败:", w.error.message);
+    }
+    renderReqs(list);
+  }
+
   (async function init() {
     try {
       const ctx = await renderTopbar("my");
@@ -143,6 +236,7 @@
       if (!session) { $("needLogin").style.display = ""; return; }
       $("main").style.display = "";
       await load();
+      await loadReqs();
     } catch (err) {
       $("needLogin").style.display = "none";
       $("main").style.display = "";
