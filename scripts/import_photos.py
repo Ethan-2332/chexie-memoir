@@ -78,19 +78,35 @@ def parse_name(text: str):
 
 
 def parse_note(folder: Path):
-    for name in NOTE_NAMES:
-        p = folder / name
-        if p.exists():
-            info = {}
-            for line in p.read_text(encoding="utf-8-sig", errors="replace").splitlines():
-                line = line.strip().lstrip("#").strip()
-                if not line:
-                    continue
-                for sep in ("：", ":"):
-                    if sep in line:
-                        k, v = line.split(sep, 1)
-                        info[k.strip().lower()] = v.strip()
-                        break
+    """读取说明文件。
+
+    优先认固定名（说明.txt / info.txt …），其次认文件夹里**任意**一个 txt/md——
+    这样随手「新建 文本文档.txt」也能被认出来，不必精确改名。
+    空文件会被跳过，继续找下一个候选。
+    """
+    candidates = [folder / n for n in NOTE_NAMES]
+    candidates += sorted(folder.glob("*.txt"))
+    candidates += sorted(folder.glob("*.md"))
+    seen = set()
+    for p in candidates:
+        if p in seen or not p.is_file():
+            continue
+        seen.add(p)
+        try:
+            text = p.read_text(encoding="utf-8-sig", errors="replace")
+        except Exception:
+            continue
+        info = {}
+        for line in text.splitlines():
+            line = line.strip().lstrip("#").strip()
+            if not line:
+                continue
+            for sep in ("：", ":"):
+                if sep in line:
+                    k, v = line.split(sep, 1)
+                    info[k.strip().lower()] = v.strip()
+                    break
+        if info:
             return info
     return {}
 
