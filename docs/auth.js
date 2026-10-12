@@ -13,6 +13,10 @@
   const sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_KEY);
   window.sb = sb;
 
+  // 站点版本号：每次改动手动 +1，方便一眼看出"你打开的是哪个版本"
+  // （浏览器缓存是这类问题最常见的元凶，有这个号就不用猜了）
+  const SITE_VERSION = "2026-10-12.2";
+
   /* ---------- 照片地址解析 ----------
      兼容两种来源：
        1) 仓库里的老照片，路径形如 photos/w001/1.jpg  → 直接用相对路径
@@ -66,7 +70,10 @@
     const fallback = function () {
       // 任何异常都退回到"只显示导航"，绝不让顶栏整块消失
       el.innerHTML =
-        '<a class="brand" href="index.html">' + esc(cfg.SITE_TITLE) + "</a>" +
+        '<a class="brand" href="index.html">' + esc(cfg.SITE_TITLE) +
+          '<span style="color:#9aa4b0;font-size:11px;font-weight:400;margin-left:7px">' +
+          SITE_VERSION + "</span>" +
+        "</a>" +
         '<nav class="nav"><a href="index.html">首页</a><a href="upload.html">上传</a>' +
         '<a class="btn small" href="login.html">登录</a></nav>';
       return { session: null, profile: null, isAdmin: false, failed: true };
@@ -119,7 +126,10 @@
       };
 
       el.innerHTML =
-        '<a class="brand" href="index.html">' + esc(cfg.SITE_TITLE) + "</a>" +
+        '<a class="brand" href="index.html">' + esc(cfg.SITE_TITLE) +
+          '<span style="color:#9aa4b0;font-size:11px;font-weight:400;margin-left:7px">' +
+          SITE_VERSION + "</span>" +
+        "</a>" +
         '<nav class="nav">' +
           links.map(function (l) {
             let b = "";
