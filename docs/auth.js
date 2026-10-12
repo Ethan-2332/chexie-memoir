@@ -15,7 +15,7 @@
 
   // 站点版本号：每次改动手动 +1，方便一眼看出"你打开的是哪个版本"
   // （浏览器缓存是这类问题最常见的元凶，有这个号就不用猜了）
-  const SITE_VERSION = "2026-10-12.2";
+  const SITE_VERSION = "2026-10-12.3";
 
   /* ---------- 照片地址解析 ----------
      兼容两种来源：
@@ -79,78 +79,88 @@
       return { session: null, profile: null, isAdmin: false, failed: true };
     };
     try {
-      const session = await getSession();
-      let profile = null, isAdmin = false;
-      if (session) {
-        profile = await getProfile(session.user.id);
-        isAdmin = !!(profile && profile.is_admin);
-      }
-      // 是否已通过注册审核（管理员天然通过）
-      const approved = isAdmin || !!(profile && profile.status === "approved");
-      const name = (profile && profile.display_name) || (session ? session.user.email : "");
+      const session = await getSession();     // 读本地存储，不花网络时间
 
-      const links = [["index.html", "首页", "index"]];
-      if (approved) links.push(["upload.html", "上传", "upload"]);
-      if (session) links.push(["my.html", "我的投稿", "my"]);
+      /* 分三帧画，先把页面交出去，再逐步补细节：
+         第一帧 = 立刻画（不等任何网络）
+         第二帧 = 查到档案后（补昵称、管理员/待审核标记、上传入口）
+         第三帧 = 三个计数【并行】查完后（补红点角标）
+         原来这些全是串行 await，管理员要等 4 个来回才开始加载作品。 */
 
-      // 各种待处理计数
-      let pendingWorks = 0, pendingReqs = 0, pendingMembers = 0;
-      if (session) {
-        try {
-          const rq = await sb.from("photo_requests")
-            .select("id", { count: "exact", head: true })
-            .eq("status", "pending")
-            .neq("requester", session.user.id);   // 自己的申请不用自己审
-          pendingReqs = rq.count || 0;
-        } catch (e) { console.warn("加照片申请计数失败:", e); }
-      }
-      if (isAdmin) {
-        try {
-          const c = await sb.from("works").select("id", { count: "exact", head: true }).eq("status", "pending");
-          pendingWorks = c.count || 0;
-        } catch (e) { console.warn("待审作品计数失败:", e); }
-        try {
-          const m = await sb.from("profiles").select("id", { count: "exact", head: true }).eq("status", "pending");
-          pendingMembers = m.count || 0;
-        } catch (e) { console.warn("待审成员计数失败:", e); }
-        links.push(["review.html", "审核", "review"]);
-        links.push(["members.html", "成员审核", "members"]);
-      }
-      if (pendingReqs > 0) links.push(["requests.html", "申请审核", "requests"]);
+      const paint = function (profile, counts) {
+        const isAdmin = !!(profile && profile.is_admin);
+        const approved = isAdmin || !!(profile && profile.status === "approved");
+        const name = (profile && profile.display_name) || (session ? session.user.email : "");
+        const c = counts || { works: 0, reqs: 0, members: 0 };
 
-      const mkBadge = function (n) {
-        return n > 0
-          ? '<em style="font-style:normal;background:#d93025;color:#fff;border-radius:999px;' +
-            'padding:0 6px;margin-left:5px;font-size:11.5px;line-height:17px;display:inline-block">' + n + "</em>"
-          : "";
+        const links = [["index.html", "首页", "index"]];
+        if (approved) links.push(["upload.html", "上传", "upload"]);
+        if (session) links.push(["my.html", "我的投稿", "my"]);
+        if (isAdmin) {
+          links.push(["review.html", "审核", "review"]);
+          links.push(["members.html", "成员审核", "members"]);
+        }
+        if (c.reqs > 0) links.push(["requests.html", "申请审核", "requests"]);
+
+        const mkBadge = function (n) {
+          return n > 0
+            ? '<em style="font-style:normal;background:#d93025;color:#fff;border-radius:999px;' +
+              'padding:0 6px;margin-left:5px;font-size:11.5px;line-height:17px;display:inline-block">' + n + "</em>"
+            : "";
+        };
+
+        el.innerHTML =
+          '<a class="brand" href="index.html">' + esc(cfg.SITE_TITLE) +
+            '<span style="color:#9aa4b0;font-size:11px;font-weight:400;margin-left:7px">' +
+            SITE_VERSION + "</span>" +
+          "</a>" +
+          '<nav class="nav">' +
+            links.map(function (l) {
+              let b = "";
+              if (l[2] === "review") b = mkBadge(c.works);
+              if (l[2] === "requests") b = mkBadge(c.reqs);
+              if (l[2] === "members") b = mkBadge(c.members);
+              return '<a href="' + l[0] + '"' + (active === l[2] ? ' class="on"' : "") + ">" + l[1] + b + "</a>";
+            }).join("") +
+            (session
+              ? '<span class="who" title="' + esc(session.user.email) + '">' + esc(name) +
+                (isAdmin
+                  ? '<em class="tag">管理员</em>'
+                  : (approved ? "" : '<em class="tag" style="background:#fef7e0;color:#8a6d00">待审核</em>')) +
+                "</span>" +
+                '<button class="linkbtn" id="btnSignOut">退出</button>'
+              : '<a class="btn small" href="login.html">登录</a>') +
+          "</nav>";
+
+        const out = document.getElementById("btnSignOut");
+        if (out) out.onclick = function () { signOut(); };
+        return { isAdmin: isAdmin, approved: approved };
       };
 
-      el.innerHTML =
-        '<a class="brand" href="index.html">' + esc(cfg.SITE_TITLE) +
-          '<span style="color:#9aa4b0;font-size:11px;font-weight:400;margin-left:7px">' +
-          SITE_VERSION + "</span>" +
-        "</a>" +
-        '<nav class="nav">' +
-          links.map(function (l) {
-            let b = "";
-            if (l[2] === "review") b = mkBadge(pendingWorks);
-            if (l[2] === "requests") b = mkBadge(pendingReqs);
-            if (l[2] === "members") b = mkBadge(pendingMembers);
-            return '<a href="' + l[0] + '"' + (active === l[2] ? ' class="on"' : "") + ">" + l[1] + b + "</a>";
-          }).join("") +
-          (session
-            ? '<span class="who" title="' + esc(session.user.email) + '">' + esc(name) +
-              (isAdmin
-                ? '<em class="tag">管理员</em>'
-                : (approved ? "" : '<em class="tag" style="background:#fef7e0;color:#8a6d00">待审核</em>')) +
-              "</span>" +
-              '<button class="linkbtn" id="btnSignOut">退出</button>'
-            : '<a class="btn small" href="login.html">登录</a>') +
-        "</nav>";
+      let st = paint(null, null);                    // 第一帧
 
-      const out = document.getElementById("btnSignOut");
-      if (out) out.onclick = function () { signOut(); };
-      return { session: session, profile: profile, isAdmin: isAdmin, approved: approved };
+      if (!session) return { session: null, profile: null, isAdmin: false, approved: false };
+
+      const profile = await getProfile(session.user.id);   // 第二帧
+      st = paint(profile, null);
+
+      // 第三帧：三个计数并行查（原来串行，是最慢的一环）
+      const counts = { works: 0, reqs: 0, members: 0 };
+      const jobs = [
+        sb.from("photo_requests").select("id", { count: "exact", head: true })
+          .eq("status", "pending").neq("requester", session.user.id)
+          .then(function (r) { counts.reqs = r.count || 0; }, function () {})
+      ];
+      if (st.isAdmin) {
+        jobs.push(sb.from("works").select("id", { count: "exact", head: true }).eq("status", "pending")
+          .then(function (r) { counts.works = r.count || 0; }, function () {}));
+        jobs.push(sb.from("profiles").select("id", { count: "exact", head: true }).eq("status", "pending")
+          .then(function (r) { counts.members = r.count || 0; }, function () {}));
+      }
+      await Promise.all(jobs);
+      paint(profile, counts);
+
+      return { session: session, profile: profile, isAdmin: st.isAdmin, approved: st.approved };
     } catch (err) {
       console.error("renderTopbar 失败:", err);
       return fallback();

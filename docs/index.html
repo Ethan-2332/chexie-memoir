@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://jttakspxfmyurdeccyul.supabase.co" crossorigin>
+<link rel="dns-prefetch" href="https://jttakspxfmyurdeccyul.supabase.co">
 <title>河海大学自行车协会 · 骑行回忆录</title>
 <style>
   :root{
@@ -437,8 +439,7 @@
 
     // 只有管理员能删：两个按钮放在灯箱左上角，一眼就能看到
     lbCur = p;
-    const canManage = !!viewer && viewer.isAdmin;
-    $("lbtools").hidden = !canManage;
+    syncLbTools();
     $("lbedit").onclick = function (e) { e.stopPropagation(); openEditModal(lbCur); };
     $("lbdel").onclick = function (e) { e.stopPropagation(); delPhoto(lbCur, lbIdx, $("lbdel")); };
     $("lbdelall").onclick = function (e) { e.stopPropagation(); delWork(lbCur, $("lbdelall")); };
@@ -450,6 +451,13 @@
     lbIdx = (lbIdx + d + lbThumbs.length) % lbThumbs.length;
     showLbPhoto();
   }
+  /* 灯箱左上角三个管理按钮的显隐（登录态拿到后可能还要再同步一次） */
+  function syncLbTools() {
+    const box = $("lbtools");
+    if (!box) return;
+    box.hidden = !(viewer && viewer.isAdmin && lbCur);
+  }
+
   function closeLb() { $("lb").hidden = true; $("lbimg").src = ""; $("lbstrip").innerHTML = ""; lbThumbs = []; }
 
   /* ---------- 事件 ---------- */
@@ -776,11 +784,15 @@
 
   /* ---------- 启动 ---------- */
   (async function init() {
-    // 先拿登录态（决定"删除照片"按钮的可见性），再加载作品
-    try {
-      const ctx = await renderTopbar("index");
-      if (ctx && ctx.session) viewer = { uid: ctx.session.user.id, isAdmin: !!ctx.isAdmin };
-    } catch (e) { console.warn("顶栏渲染失败:", e); }
+    // 顶栏与作品列表【并行】开始，互不等待
+    // （原来是先 await 顶栏、再查作品，管理员白等 4 个网络来回）
+    const topbarP = (async function () {
+      try {
+        const ctx = await renderTopbar("index");
+        if (ctx && ctx.session) viewer = { uid: ctx.session.user.id, isAdmin: !!ctx.isAdmin };
+        syncLbTools();        // 登录态可能比用户点开灯箱晚到，这里补一次
+      } catch (e) { console.warn("顶栏渲染失败:", e); }
+    })();
 
     try {
       const q0 = new URLSearchParams(location.search).get("q");
@@ -800,6 +812,8 @@
     syncSearchBox();
     refreshChips();
     render();
+
+    await topbarP;      // 只是收尾，不阻塞上面的渲染
   })();
 })();
 </script>
