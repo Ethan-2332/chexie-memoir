@@ -544,26 +544,60 @@
     }
   };
 
-  /* ---------- 删除单张照片（上传者本人或管理员）---------- */
+  /* ---------- 带超时的请求包装 ----------
+     supabase-js 默认没有超时，网络一挂 promise 就永远不 settle，
+     界面会一直卡在"删除中…"。这里强制给个上限。 */
+  function withTimeout(promise, ms, label) {
+    return Promise.race([
+      promise,
+      new Promise(function (_, rej) {
+        setTimeout(function () {
+          rej(new Error((label || "请求") + "超时（" + Math.round(ms / 1000) + " 秒），可能是网络卡住了"));
+        }, ms);
+      })
+    ]);
+  }
+
+  /* ---------- 删除单张照片（仅管理员）---------- */
   async function delPhoto(p, idx, btn) {
     const raw = (p.raw || [])[idx];
     if (!raw) { toast("找不到这张照片的路径", "err"); return; }
     if (!confirm("确定删除这张照片？删除后不可恢复。")) return;
     const old = btn.textContent;
     btn.disabled = true; btn.textContent = "删除中…";
+
+    // 兜底：不管底层卡多久，25 秒后按钮一定恢复
+    let done = false;
+    const guard = setTimeout(function () {
+      if (done) return;
+      btn.disabled = false;
+      btn.textContent = old;
+      toast("等太久了 —— 请刷新页面确认照片是否已被删除", "err");
+    }, 25000);
+
     try {
-      // 先改数据库（保证列表和实际显示一致），再删存储文件
-      const r = await sb.rpc("remove_work_photo", { p_work: p.id, p_path: raw });
+      // 先改数据库（保证列表与实际一致），再删存储文件
+      const r = await withTimeout(
+        sb.rpc("remove_work_photo", { p_work: p.id, p_path: raw }), 20000, "删除照片");
       if (r.error) throw r.error;
-      const paths = [raw, raw.replace(/\/([^/]+)$/, "/thumb/$1")];
-      const rm = await sb.storage.from(APP_CONFIG.PHOTO_BUCKET).remove(paths);
-      if (rm.error) console.warn("存储文件删除失败（只留个孤儿文件，不影响显示）:", rm.error);
+
+      try {
+        const paths = [raw, raw.replace(/\/([^/]+)$/, "/thumb/$1")];
+        const rm = await withTimeout(
+          sb.storage.from(APP_CONFIG.PHOTO_BUCKET).remove(paths), 20000, "删除文件");
+        if (rm && rm.error) console.warn("存储文件删除失败（只留个孤儿文件，不影响显示）:", rm.error);
+      } catch (e2) {
+        console.warn("存储文件删除超时/失败，忽略（数据库已更新）:", e2);
+      }
+
+      done = true; clearTimeout(guard);
       closeLb();
-      await loadWorks();
+      await withTimeout(loadWorks(), 20000, "刷新列表");
       refreshChips();
       render();
       toast("已删除这张照片", "ok");
     } catch (err) {
+      done = true; clearTimeout(guard);
       toast(zhError(err && err.message ? err.message : err), "err");
       btn.disabled = false; btn.textContent = old;
     }
