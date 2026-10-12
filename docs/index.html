@@ -194,6 +194,7 @@
       <div class="t"><span class="d" id="lbdate"></span><span class="p" id="lbplace"></span></div>
       <div class="c" id="lbcaption"></div>
       <div class="a" id="lbauthor"></div>
+      <div id="lbmanage" style="margin-top:14px;display:none"></div>
     </div>
   </div>
 </div>
@@ -226,6 +227,7 @@
   const $ = id => document.getElementById(id);
   let ALL = [];
   let query = "";
+  let viewer = null;      // {uid, isAdmin} —— 决定"删除照片"按钮给不给你看
 
   /* ---------- 把数据库记录整理成页面要的形状 ---------- */
   function normalize(w) {
@@ -236,6 +238,8 @@
     if (coverIdx < 0) coverIdx = 0;
     return {
       id: w.id,
+      uploader: w.uploader || "",
+      raw: raw,                       // 原始路径（删除时要用）
       date: w.date || "",
       place: w.place || "",
       city: w.city || "",
@@ -370,6 +374,26 @@
       });
     }
     showLbPhoto();
+
+    // 只有管理员能删照片
+    const mbox = $("lbmanage");
+    mbox.innerHTML = "";
+    const canManage = !!viewer && viewer.isAdmin;
+    mbox.style.display = canManage ? "" : "none";
+    if (canManage) {
+      const b = document.createElement("button");
+      b.className = "btn small ghost";
+      b.style.color = "#d93025";
+      b.style.borderColor = "#f3b8b3";
+      b.textContent = "删除这张照片（管理员）";
+      b.onclick = function () { delPhoto(p, lbIdx, b); };
+      mbox.appendChild(b);
+      const t = document.createElement("span");
+      t.style.cssText = "color:var(--dim);font-size:12.5px;margin-left:10px";
+      t.textContent = "删除后不可恢复；如果这是最后一张，作品集会变成 0 张。";
+      mbox.appendChild(t);
+    }
+
     $("lb").hidden = false;
   }
   function stepLb(d) {
@@ -519,9 +543,50 @@
     }
   };
 
+  /* ---------- 删除单张照片（上传者本人或管理员）---------- */
+  async function delPhoto(p, idx, btn) {
+    const raw = (p.raw || [])[idx];
+    if (!raw) { toast("找不到这张照片的路径", "err"); return; }
+    if (!confirm("确定删除这张照片？删除后不可恢复。")) return;
+    const old = btn.textContent;
+    btn.disabled = true; btn.textContent = "删除中…";
+    try {
+      // 先改数据库（保证列表和实际显示一致），再删存储文件
+      const r = await sb.rpc("remove_work_photo", { p_work: p.id, p_path: raw });
+      if (r.error) throw r.error;
+      const paths = [raw, raw.replace(/\/([^/]+)$/, "/thumb/$1")];
+      const rm = await sb.storage.from(APP_CONFIG.PHOTO_BUCKET).remove(paths);
+      if (rm.error) console.warn("存储文件删除失败（只留个孤儿文件，不影响显示）:", rm.error);
+      closeLb();
+      await loadWorks();
+      refreshChips();
+      render();
+      toast("已删除这张照片", "ok");
+    } catch (err) {
+      toast(zhError(err && err.message ? err.message : err), "err");
+      btn.disabled = false; btn.textContent = old;
+    }
+  }
+
+  /* ---------- 加载作品列表 ---------- */
+  async function loadWorks() {
+    const r = await sb.from("works").select("*")
+      .eq("status", "published")
+      .order("date", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(500);
+    if (r.error) throw r.error;
+    ALL = (r.data || []).map(normalize);
+    $("footCount").textContent = "共 " + ALL.length + " 个作品 · " + countPhotos(ALL) + " 张照片";
+  }
+
   /* ---------- 启动 ---------- */
   (async function init() {
-    if (window.renderTopbar) renderTopbar("index");
+    // 先拿登录态（决定"删除照片"按钮的可见性），再加载作品
+    try {
+      const ctx = await renderTopbar("index");
+      if (ctx && ctx.session) viewer = { uid: ctx.session.user.id, isAdmin: !!ctx.isAdmin };
+    } catch (e) { console.warn("顶栏渲染失败:", e); }
 
     try {
       const q0 = new URLSearchParams(location.search).get("q");
@@ -529,14 +594,7 @@
     } catch (e) {}
 
     try {
-      const r = await sb.from("works").select("*")
-        .eq("status", "published")
-        .order("date", { ascending: false })
-        .order("created_at", { ascending: false })
-        .limit(500);
-      if (r.error) throw r.error;
-      ALL = (r.data || []).map(normalize);
-      $("footCount").textContent = "共 " + ALL.length + " 个作品 · " + countPhotos(ALL) + " 张照片";
+      await loadWorks();
     } catch (err) {
       $("grid").innerHTML = '<p class="empty">作品加载失败：' +
         esc(err && err.message ? err.message : err) +

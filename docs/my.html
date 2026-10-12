@@ -109,23 +109,15 @@
       im.onclick = function () { if (coverRaw) window.open(photoUrl(coverRaw), "_blank"); };
 
       const acts = el.querySelector(".acts");
-      if (w.status === "pending" || w.status === "rejected") {
-        const b = document.createElement("button");
-        b.className = "btn small ghost";
-        b.textContent = "撤回并删除";
-        b.onclick = async function () {
-          if (!confirm("确定撤回并删除这个作品？照片会一起删掉，不可恢复。")) return;
-          b.disabled = true; b.textContent = "处理中…";
-          try { await withdraw(w); await load(); }
-          catch (err) { show(zhError(err && err.message ? err.message : err), "err"); b.disabled = false; b.textContent = "撤回并删除"; }
-        };
-        acts.appendChild(b);
-      } else {
-        const s = document.createElement("span");
-        s.className = "hint";
-        s.textContent = "已公开展示中。如需下架，请联系协会管理员。";
-        acts.appendChild(s);
-      }
+      const isPub = w.status === "published";
+      const s = document.createElement("span");
+      s.className = "hint";
+      s.textContent = isPub
+        ? "已公开展示中。需要删除或修改，请联系协会管理员。"
+        : (w.status === "pending"
+            ? "正在等管理员审核。需要删除，请联系协会管理员。"
+            : "这个作品没有通过审核。需要删除，请联系协会管理员。");
+      acts.appendChild(s);
 
       box.appendChild(el);
     });
