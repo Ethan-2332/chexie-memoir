@@ -168,8 +168,11 @@
     setTimeout(function () {
       if (!window.sb) { show("Supabase 库没加载成功（vendor/supabase.js）"); return; }
       var g = document.getElementById("grid");
-      if (g && g.textContent.indexOf("正在加载") !== -1) show("作品加载超时：连不上数据库，或网络被拦");
-    }, 9000);
+      if (g && g.textContent.indexOf("正在加载") !== -1) {
+        show("作品还在加载（已等 25 秒）。手机流量、校园网有时连不上数据库——"
+           + "可以切到 WiFi 或换个网络再试，或者用系统浏览器打开（不要在微信/QQ 里点开）。");
+      }
+    }, 25000);
   });
 })();
 </script>
@@ -770,16 +773,33 @@
     }
   }
 
-  /* ---------- 加载作品列表 ---------- */
+  /* ---------- 加载作品列表（带自动重试）----------
+     手机流量 / 校园网经常偶发连不上 Supabase，重试一两次往往就好了。 */
   async function loadWorks() {
-    const r = await sb.from("works").select("*")
-      .eq("status", "published")
-      .order("date", { ascending: false })
-      .order("created_at", { ascending: false })
-      .limit(500);
-    if (r.error) throw r.error;
-    ALL = (r.data || []).map(normalize);
-    $("footCount").textContent = "共 " + ALL.length + " 个作品 · " + countPhotos(ALL) + " 张照片";
+    let lastErr = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const r = await withTimeout(
+          sb.from("works").select("*")
+            .eq("status", "published")
+            .order("date", { ascending: false })
+            .order("created_at", { ascending: false })
+            .limit(500),
+          15000, "加载作品");
+        if (r.error) throw r.error;
+        ALL = (r.data || []).map(normalize);
+        $("footCount").textContent = "共 " + ALL.length + " 个作品 · " + countPhotos(ALL) + " 张照片";
+        return;
+      } catch (e) {
+        lastErr = e;
+        console.warn("第 " + (attempt + 1) + " 次加载失败：", e && e.message ? e.message : e);
+        if (attempt < 2) {
+          $("grid").innerHTML = '<p class="empty">网络不太顺，正在重试（第 ' + (attempt + 2) + " 次）…</p>";
+          await new Promise(function (res) { setTimeout(res, 1500 * (attempt + 1)); });
+        }
+      }
+    }
+    throw lastErr;
   }
 
   /* ---------- 启动 ---------- */
@@ -802,9 +822,14 @@
     try {
       await loadWorks();
     } catch (err) {
-      $("grid").innerHTML = '<p class="empty">作品加载失败：' +
-        esc(err && err.message ? err.message : err) +
-        '<br>请打开 <a href="diag.html">诊断页</a> 看看是哪一环出了问题。</p>';
+      $("grid").innerHTML =
+        '<p class="empty">作品没能加载出来：' + esc(err && err.message ? err.message : err) +
+        "<br><br>常见原因和办法：<br>" +
+        "· 手机流量 / 校园网有时连不上数据库 → <b>切到 WiFi 或换个网络再试</b><br>" +
+        "· 在微信、QQ 里点开的 → <b>用系统浏览器（Safari / Chrome）打开</b><br>" +
+        "· 只是网络慢 → 多等一会儿<br><br>" +
+        '<a href="javascript:location.reload()" style="font-weight:600">点这里重新加载</a>' +
+        ' &nbsp;·&nbsp; <a href="diag.html">诊断页</a></p>';
       return;
     }
 
