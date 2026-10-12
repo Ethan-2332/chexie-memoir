@@ -35,8 +35,11 @@
   </div>
 
   <div id="main" style="display:none">
-    <h1>成员审核</h1>
-    <p class="lead">新注册的同学会出现在这里。点「通过」之后，他才能上传照片；在此之前只能浏览。</p>
+    <h1>成员与管理员</h1>
+    <p class="lead">
+      新注册的同学会出现在这里——点「通过」之后他才能上传照片。<br>
+      点「设为管理员」可以把权限交给他（能审核、删除、修改）；随时点「取消管理员」收回。
+    </p>
     <div class="filters" id="filters"></div>
     <div id="list"></div>
   </div>
@@ -62,13 +65,29 @@
     if (r.error) throw r.error;
   }
 
+  async function setAdmin(p, yes) {
+    const name = p.display_name || p.email || "这个账号";
+    if (yes) {
+      if (!confirm("把「" + name + "」设为管理员？\n\n" +
+                   "他将能审核作品和成员、处理加照片申请、删除和修改内容——权限和你一样。")) return false;
+    } else {
+      if (!confirm("取消「" + name + "」的管理员身份？\n\n" +
+                   "他将变回普通成员：能上传和浏览，但不能再审核、删除或修改别人的内容。")) return false;
+    }
+    const r = await sb.rpc("set_admin", { p_user: p.id, p_is_admin: yes });
+    if (r.error) throw r.error;
+    return true;
+  }
+
   function renderFilters() {
     const c = { pending: 0, approved: 0, rejected: 0 };
     all.forEach(p => { if (c[p.status] !== undefined) c[p.status]++; });
+    const admins = all.filter(p => p.is_admin).length;
     const items = [
       ["pending", "待审核 " + c.pending],
       ["approved", "已通过 " + c.approved],
       ["rejected", "已拒绝 " + c.rejected],
+      ["admin", "管理员 " + admins],
       ["all", "全部 " + all.length]
     ];
     $("filters").innerHTML = "";
@@ -82,7 +101,11 @@
   }
 
   function renderList() {
-    const list = all.filter(p => filter === "all" || p.status === filter);
+    const list = all.filter(function (p) {
+      if (filter === "all") return true;
+      if (filter === "admin") return !!p.is_admin;
+      return p.status === filter;
+    });
     const box = $("list");
     box.innerHTML = "";
     if (!list.length) {
@@ -116,7 +139,7 @@
         b.textContent = txt;
         b.onclick = async function () {
           b.disabled = true; const o = b.textContent; b.textContent = "处理中…";
-          try { await fn(); await load(); }
+          try { const ok = await fn(); if (ok !== false) await load(); }
           catch (err) { show(zhError(err && err.message ? err.message : err), "err"); b.disabled = false; b.textContent = o; }
         };
         acts.appendChild(b);
@@ -126,22 +149,31 @@
       if (isMe) {
         const s = document.createElement("span");
         s.className = "hint";
-        s.textContent = "不能审核自己";
+        s.textContent = "这是你自己（不能审核或降级自己）";
         acts.appendChild(s);
-      } else if (p.status === "pending") {
-        mk("通过", "ok", () => review(p, "approved", null));
-        mk("拒绝", "danger", () => {
-          const r = prompt("拒绝原因（申请人看不到具体界面，仅供你自己记录，可留空）：", "");
-          if (r === null) return;
-          return review(p, "rejected", r);
-        });
-      } else if (p.status === "approved") {
-        mk("取消通过", "ghost", () => {
-          if (!confirm("取消后，这个账号将不能再上传照片（已上传的内容不受影响）。确定？")) return;
-          return review(p, "pending", "管理员取消了通过");
-        });
       } else {
-        mk("改为通过", "ok", () => review(p, "approved", null));
+        if (p.status === "pending") {
+          mk("通过", "ok", () => review(p, "approved", null));
+          mk("拒绝", "danger", () => {
+            const r = prompt("拒绝原因（申请人看不到具体界面，仅供你自己记录，可留空）：", "");
+            if (r === null) return false;
+            return review(p, "rejected", r);
+          });
+        } else if (p.status === "approved") {
+          mk("取消通过", "ghost", () => {
+            if (!confirm("取消后，这个账号将不能再上传照片（已上传的内容不受影响）。确定？")) return false;
+            return review(p, "pending", "管理员取消了通过");
+          });
+        } else {
+          mk("改为通过", "ok", () => review(p, "approved", null));
+        }
+
+        // 管理员开关
+        if (p.is_admin) {
+          mk("取消管理员", "ghost", () => setAdmin(p, false));
+        } else {
+          mk("设为管理员", "ghost", () => setAdmin(p, true));
+        }
       }
 
       box.appendChild(el);
