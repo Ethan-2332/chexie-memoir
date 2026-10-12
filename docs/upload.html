@@ -46,6 +46,19 @@
     </div>
   </div>
 
+  <div class="card" id="needApproval" style="display:none">
+    <h3>你的账号还在等管理员通过</h3>
+    <p class="hint">
+      为了确认投稿的是协会同学，新注册的账号需要管理员点一下"通过"才放行。
+      通过之后这个页面就会出现上传表单——通常用不了多久。
+    </p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <a class="btn ghost" href="index.html">先去逛逛首页</a>
+      <button class="btn" id="btnRecheck2" type="button">我已经通过了，重新检测</button>
+      <a class="btn ghost" href="diag.html">诊断页</a>
+    </div>
+  </div>
+
   <div id="main" style="display:none">
     <h1>上传照片</h1>
     <p class="lead">一次上传 = 一个作品。选好照片、填上地点，提交后等管理员审核通过就会出现在首页。</p>
@@ -274,15 +287,26 @@
   async function checkLogin() {
     const ctx = await renderTopbar("upload");
     session = ctx && ctx.session;
-    if (!session) {
+
+    const showOnly = function (which, why) {
       $("main").style.display = "none";
-      $("needLogin").style.display = "";
-      $("noLoginWhy").textContent = "当前没有检测到登录状态。"
+      $("needLogin").style.display = which === "login" ? "" : "none";
+      $("needApproval").style.display = which === "approval" ? "" : "none";
+      if (which === "login" && why) $("noLoginWhy").textContent = why;
+    };
+
+    if (!session) {
+      showOnly("login", "当前没有检测到登录状态。"
         + (ctx && ctx.failed ? "（顶栏渲染也失败了，请点『打开诊断页』看看）" : "")
-        + " 如果你确信已经登录过，点中间那个按钮重新检测一次。";
+        + " 如果你确信已经登录过，点中间那个按钮重新检测一次。");
+      return false;
+    }
+    if (!ctx.approved) {                    // 已登录，但还没通过注册审核
+      showOnly("approval");
       return false;
     }
     $("needLogin").style.display = "none";
+    $("needApproval").style.display = "none";
     $("main").style.display = "";
     $("author").value = (ctx.profile && ctx.profile.display_name) || "";
     if (!$("date").value) {
@@ -292,13 +316,20 @@
     return true;
   }
 
-  $("btnRecheck").onclick = async function () {
-    const b = $("btnRecheck");
-    b.disabled = true; b.textContent = "检测中…";
-    try { await checkLogin(); toast("已重新检测登录状态"); }
-    catch (e) { toast("检测失败：" + (e.message || e), "err"); }
-    b.disabled = false; b.textContent = "我刚刚登录过，重新检测";
-  };
+  function recheck(btn) {
+    return async function () {
+      const t = btn.textContent;
+      btn.disabled = true; btn.textContent = "检测中…";
+      try {
+        const ok = await checkLogin();
+        toast(ok ? "已通过审核，可以上传了" : "还没有通过——请等管理员处理", ok ? "ok" : "");
+      } catch (e) { toast("检测失败：" + (e.message || e), "err"); }
+      btn.disabled = false; btn.textContent = t;
+    };
+  }
+
+  $("btnRecheck").onclick = recheck($("btnRecheck"));
+  $("btnRecheck2").onclick = recheck($("btnRecheck2"));
 
   (async function init() {
     try {

@@ -47,7 +47,7 @@
 
   window.getProfile = async function (uid) {
     const { data, error } = await sb.from("profiles")
-      .select("display_name, is_admin").eq("id", uid).maybeSingle();
+      .select("display_name, is_admin, status").eq("id", uid).maybeSingle();
     if (error) { console.warn("读取档案失败:", error.message); return null; }
     return data;
   };
@@ -78,16 +78,16 @@
         profile = await getProfile(session.user.id);
         isAdmin = !!(profile && profile.is_admin);
       }
+      // 是否已通过注册审核（管理员天然通过）
+      const approved = isAdmin || !!(profile && profile.status === "approved");
       const name = (profile && profile.display_name) || (session ? session.user.email : "");
 
-      const links = [
-        ["index.html", "首页", "index"],
-        ["upload.html", "上传", "upload"]
-      ];
+      const links = [["index.html", "首页", "index"]];
+      if (approved) links.push(["upload.html", "上传", "upload"]);
       if (session) links.push(["my.html", "我的投稿", "my"]);
 
-      // 计数：待审作品（管理员看）、待审的"加照片申请"（作品集作者或管理员看）
-      let pendingWorks = 0, pendingReqs = 0;
+      // 各种待处理计数
+      let pendingWorks = 0, pendingReqs = 0, pendingMembers = 0;
       if (session) {
         try {
           const rq = await sb.from("photo_requests")
@@ -102,7 +102,12 @@
           const c = await sb.from("works").select("id", { count: "exact", head: true }).eq("status", "pending");
           pendingWorks = c.count || 0;
         } catch (e) { console.warn("待审作品计数失败:", e); }
+        try {
+          const m = await sb.from("profiles").select("id", { count: "exact", head: true }).eq("status", "pending");
+          pendingMembers = m.count || 0;
+        } catch (e) { console.warn("待审成员计数失败:", e); }
         links.push(["review.html", "审核", "review"]);
+        links.push(["members.html", "成员审核", "members"]);
       }
       if (pendingReqs > 0) links.push(["requests.html", "申请审核", "requests"]);
 
@@ -120,18 +125,22 @@
             let b = "";
             if (l[2] === "review") b = mkBadge(pendingWorks);
             if (l[2] === "requests") b = mkBadge(pendingReqs);
+            if (l[2] === "members") b = mkBadge(pendingMembers);
             return '<a href="' + l[0] + '"' + (active === l[2] ? ' class="on"' : "") + ">" + l[1] + b + "</a>";
           }).join("") +
           (session
             ? '<span class="who" title="' + esc(session.user.email) + '">' + esc(name) +
-              (isAdmin ? '<em class="tag">管理员</em>' : "") + "</span>" +
+              (isAdmin
+                ? '<em class="tag">管理员</em>'
+                : (approved ? "" : '<em class="tag" style="background:#fef7e0;color:#8a6d00">待审核</em>')) +
+              "</span>" +
               '<button class="linkbtn" id="btnSignOut">退出</button>'
             : '<a class="btn small" href="login.html">登录</a>') +
         "</nav>";
 
       const out = document.getElementById("btnSignOut");
       if (out) out.onclick = function () { signOut(); };
-      return { session: session, profile: profile, isAdmin: isAdmin };
+      return { session: session, profile: profile, isAdmin: isAdmin, approved: approved };
     } catch (err) {
       console.error("renderTopbar 失败:", err);
       return fallback();

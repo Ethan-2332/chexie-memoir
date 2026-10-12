@@ -20,6 +20,7 @@
       <tr><td style="color:var(--dim);padding:6px 0;width:96px">昵称</td><td id="whoName"></td></tr>
       <tr><td style="color:var(--dim);padding:6px 0">邮箱</td><td id="whoEmail"></td></tr>
       <tr><td style="color:var(--dim);padding:6px 0">管理员</td><td id="whoAdmin"></td></tr>
+      <tr><td style="color:var(--dim);padding:6px 0">审核状态</td><td id="whoStatus"></td></tr>
     </table>
     <div style="margin-top:20px;display:flex;gap:10px;flex-wrap:wrap">
       <a class="btn" href="upload.html">去上传照片</a>
@@ -120,8 +121,8 @@
         });
         if (error) throw error;
         if (data.session) {
-          show("注册成功，已自动登录，正在跳转…", "ok");
-          setTimeout(() => { location.href = next; }, 600);
+          show("注册成功！你的账号需要管理员点一下「通过」才能上传照片，通过后直接就能用。正在跳转…", "ok");
+          setTimeout(() => { location.href = next; }, 1500);
         } else {
           show("注册成功！我们给 " + email + " 发了一封验证邮件，请点开里面的链接，然后回来登录。"
                + "（收不到就看垃圾邮件；验证过再登录即可）", "ok");
@@ -160,6 +161,10 @@
       $("whoName").textContent = (ctx.profile && ctx.profile.display_name) || "（未设置）";
       $("whoEmail").textContent = ctx.session.user.email;
       $("whoAdmin").textContent = ctx.isAdmin ? "是 —— 可以进审核页" : "否";
+      $("whoStatus").textContent = ctx.isAdmin
+        ? "管理员，直接可上传"
+        : (ctx.approved ? "已通过审核，可以上传照片"
+                        : "⏳ 等待管理员通过 —— 通过后才能上传照片");
       $("btnOut").onclick = () => signOut();
     } else {
       setMode("login");
