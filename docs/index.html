@@ -410,6 +410,9 @@
     $("q").value = ""; query = ""; syncSearchBox(); refreshChips(); render(); $("q").focus();
   };
   $("lbclose").onclick = closeLb;
+  // 左右翻页按钮（之前漏了绑定，只有键盘左右键能用）
+  $("lbprev").onclick = function (e) { e.stopPropagation(); stepLb(-1); };
+  $("lbnext").onclick = function (e) { e.stopPropagation(); stepLb(1); };
   $("lb").addEventListener("click", e => { if (e.target === $("lb")) closeLb(); });
   document.addEventListener("keydown", function (e) {
     if (e.key === "Escape" && !$("lb").hidden) closeLb();
