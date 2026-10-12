@@ -94,6 +94,15 @@
   .mobox .mbtn.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
   .mobox .mbtn:disabled{opacity:.55;cursor:default}
   .mobox .mtip{color:var(--dim);font-size:12.5px;margin-top:12px;line-height:1.7}
+  .mobox input[type=text],.mobox input[type=date]{
+    width:100%;border:1px solid var(--line);border-radius:10px;padding:10px 12px;
+    font:inherit;font-size:14px;outline:none;color:var(--ink);background:#fff;
+  }
+  .mobox input:focus,.mobox textarea:focus{border-color:#c9d6e8;box-shadow:0 0 0 3px rgba(26,115,232,.12)}
+  .mobox label{display:block;font-size:13px;color:var(--dim);margin:14px 0 6px}
+  .mobox .mb > label:first-child{margin-top:0}
+  .mobox .frow{display:flex;gap:12px;flex-wrap:wrap}
+  .mobox .frow > div{flex:1;min-width:140px}
   .empty{color:var(--dim);grid-column:1/-1;text-align:center;padding:40px 0;line-height:1.9}
 
   footer{border-top:1px solid var(--line);margin-top:20px;padding:22px 24px 44px;color:var(--dim);font-size:12.5px;text-align:center;line-height:1.8}
@@ -130,6 +139,8 @@
   .lbdel:hover{background:#b3261e}
   .lbdelall{background:rgba(255,255,255,.94);color:#b3261e}
   .lbdelall:hover{background:#fff}
+  .lbedit{background:rgba(255,255,255,.94);color:#1a73e8}
+  .lbedit:hover{background:#fff}
 </style>
 </head>
 <body>
@@ -192,6 +203,7 @@
 <div class="lb" id="lb" hidden>
   <button class="lbclose" id="lbclose" title="关闭">×</button>
   <div class="lbtools" id="lbtools" hidden>
+    <button class="lbedit" id="lbedit" title="修改日期、地点、文案等">编辑信息</button>
     <button class="lbdel" id="lbdel" title="删除当前这张照片">删除这张照片</button>
     <button class="lbdelall" id="lbdelall" title="删除整个作品集及其全部照片">删除整个作品集</button>
   </div>
@@ -228,6 +240,41 @@
     <div class="mf">
       <button class="mbtn ghost" id="mqCancel" type="button">取消</button>
       <button class="mbtn primary" id="mqSubmit" type="button">提交申请</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="editModal" hidden>
+  <div class="mobox">
+    <div class="mh">编辑作品集信息</div>
+    <div class="mb">
+      <div class="frow">
+        <div>
+          <label for="edDate">拍摄日期</label>
+          <input type="date" id="edDate">
+        </div>
+        <div>
+          <label for="edPlace">地点（必填）</label>
+          <input type="text" id="edPlace" maxlength="40" placeholder="例如：天目湖-大溪水库">
+        </div>
+      </div>
+      <label for="edCaption">文案</label>
+      <textarea id="edCaption" maxlength="300" placeholder="作品上显示的那句话"></textarea>
+      <div class="frow">
+        <div>
+          <label for="edAuthor">投稿人昵称</label>
+          <input type="text" id="edAuthor" maxlength="24" placeholder="留空则不显示">
+        </div>
+        <div>
+          <label for="edTags">标签（逗号分隔）</label>
+          <input type="text" id="edTags" maxlength="80" placeholder="例如：环湖, 日落">
+        </div>
+      </div>
+      <div class="mtip" id="edTip">改完点保存，首页立刻更新。照片本身不会被动到。</div>
+    </div>
+    <div class="mf">
+      <button class="mbtn ghost" id="edCancel" type="button">取消</button>
+      <button class="mbtn primary" id="edSave" type="button">保存</button>
     </div>
   </div>
 </div>
@@ -392,6 +439,7 @@
     lbCur = p;
     const canManage = !!viewer && viewer.isAdmin;
     $("lbtools").hidden = !canManage;
+    $("lbedit").onclick = function (e) { e.stopPropagation(); openEditModal(lbCur); };
     $("lbdel").onclick = function (e) { e.stopPropagation(); delPhoto(lbCur, lbIdx, $("lbdel")); };
     $("lbdelall").onclick = function (e) { e.stopPropagation(); delWork(lbCur, $("lbdelall")); };
 
@@ -605,6 +653,64 @@
       btn.disabled = false; btn.textContent = old;
     }
   }
+
+  /* ---------- 编辑作品集信息（仅管理员）---------- */
+  let edWork = null;
+
+  function openEditModal(p) {
+    edWork = p;
+    $("edDate").value = p.date || "";
+    $("edPlace").value = p.place || "";
+    $("edCaption").value = p.caption || "";
+    $("edAuthor").value = p.author || "";
+    $("edTags").value = (p.tags || []).join(", ");
+    $("edTip").style.color = "";
+    $("edTip").textContent = "改完点保存，首页立刻更新。照片本身不会被动到。";
+    $("edSave").disabled = false;
+    $("edSave").textContent = "保存";
+    $("editModal").hidden = false;
+    setTimeout(function () { try { $("edPlace").focus(); } catch (e) {} }, 50);
+  }
+
+  function closeEditModal() { $("editModal").hidden = true; edWork = null; }
+
+  $("edCancel").onclick = closeEditModal;
+  $("editModal").addEventListener("click", function (e) {
+    if (e.target === $("editModal")) closeEditModal();
+  });
+
+  $("edSave").onclick = async function () {
+    if (!edWork) return;
+    const place = $("edPlace").value.trim();
+    if (!place) {
+      $("edTip").style.color = "var(--danger)";
+      $("edTip").textContent = "地点不能为空 —— 它是首页显示和搜索的主要依据。";
+      return;
+    }
+    const btn = $("edSave");
+    btn.disabled = true; btn.textContent = "保存中…";
+    try {
+      const row = {
+        date: $("edDate").value || null,
+        place: place,
+        caption: $("edCaption").value.trim() || null,
+        author_display: $("edAuthor").value.trim() || null,
+        tags: $("edTags").value.split(/[,，;；]/)
+                 .map(function (s) { return s.trim(); }).filter(Boolean)
+      };
+      const r = await withTimeout(sb.from("works").update(row).eq("id", edWork.id), 20000, "保存");
+      if (r.error) throw r.error;
+      closeEditModal();
+      await withTimeout(loadWorks(), 20000, "刷新列表");
+      refreshChips();
+      render();
+      toast("作品集信息已更新", "ok");
+    } catch (err) {
+      $("edTip").style.color = "var(--danger)";
+      $("edTip").textContent = "保存失败：" + zhError(err && err.message ? err.message : err);
+      btn.disabled = false; btn.textContent = "保存";
+    }
+  };
 
   /* ---------- 删除整个作品集（仅管理员）---------- */
   async function delWork(p, btn) {
