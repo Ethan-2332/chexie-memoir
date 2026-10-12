@@ -131,9 +131,16 @@
 
   /* ---------- 删除 ---------- */
   async function removeWork(w) {
-    const paths = (w.photos || []).concat((w.photos || []).map(p => p.replace(/\/([^/]+)$/, "/thumb/$1")));
-    if (paths.length) { try { await sb.storage.from(APP_CONFIG.PHOTO_BUCKET).remove(paths); } catch (e) { console.warn(e); } }
-    const d = await sb.from("works").delete().eq("id", w.id);
+    // 只删 Supabase 存储里的对象；仓库里的相对路径（photos/...）不是存储对象，跳过
+    const all = (w.photos || []).concat((w.photos || []).map(p => p.replace(/\/([^/]+)$/, "/thumb/$1")));
+    const remote = all.filter(function (x) { return x.indexOf("photos/") !== 0; });
+    if (remote.length) {
+      try {
+        const rm = await withTimeout(sb.storage.from(APP_CONFIG.PHOTO_BUCKET).remove(remote), 30000, "删除文件");
+        if (rm && rm.error) console.warn("部分存储文件删除失败（留孤儿文件，不影响显示）:", rm.error);
+      } catch (e) { console.warn("存储删除超时/失败，继续删记录:", e); }
+    }
+    const d = await withTimeout(sb.from("works").delete().eq("id", w.id), 20000, "删除作品集");
     if (d.error) throw d.error;
   }
 

@@ -121,12 +121,15 @@
   .lbinfo .c{margin-top:10px;font-size:15px;line-height:1.6}
   .lbinfo .a{margin-top:10px;color:var(--dim);font-size:13px}
   .lbclose{position:absolute;right:26px;top:22px;border:0;background:rgba(255,255,255,.9);width:38px;height:38px;border-radius:50%;font-size:20px;cursor:pointer;color:#17202a}
-  .lbdel{
-    position:absolute;left:26px;top:22px;z-index:3;border:0;cursor:pointer;
-    background:rgba(217,48,37,.94);color:#fff;padding:10px 17px;border-radius:9px;
+  .lbtools{position:absolute;left:26px;top:22px;z-index:3;display:flex;gap:10px;flex-wrap:wrap;max-width:62%}
+  .lbtools button{
+    border:0;cursor:pointer;padding:10px 16px;border-radius:9px;
     font:inherit;font-size:14px;font-weight:600;box-shadow:0 3px 12px rgba(0,0,0,.3);
   }
+  .lbdel{background:rgba(217,48,37,.94);color:#fff}
   .lbdel:hover{background:#b3261e}
+  .lbdelall{background:rgba(255,255,255,.94);color:#b3261e}
+  .lbdelall:hover{background:#fff}
 </style>
 </head>
 <body>
@@ -188,7 +191,10 @@
 
 <div class="lb" id="lb" hidden>
   <button class="lbclose" id="lbclose" title="关闭">×</button>
-  <button class="lbdel" id="lbdel" hidden title="删除当前这张照片">删除这张照片</button>
+  <div class="lbtools" id="lbtools" hidden>
+    <button class="lbdel" id="lbdel" title="删除当前这张照片">删除这张照片</button>
+    <button class="lbdelall" id="lbdelall" title="删除整个作品集及其全部照片">删除整个作品集</button>
+  </div>
   <div class="lbinner">
     <div class="lbstage">
       <img id="lbimg" alt="">
@@ -382,15 +388,12 @@
     }
     showLbPhoto();
 
-    // 只有管理员能删照片：按钮放在灯箱左上角，一眼就能看到
+    // 只有管理员能删：两个按钮放在灯箱左上角，一眼就能看到
     lbCur = p;
-    const del = $("lbdel");
     const canManage = !!viewer && viewer.isAdmin;
-    del.hidden = !canManage;
-    del.onclick = function (e) {
-      e.stopPropagation();
-      delPhoto(lbCur, lbIdx, del);
-    };
+    $("lbtools").hidden = !canManage;
+    $("lbdel").onclick = function (e) { e.stopPropagation(); delPhoto(lbCur, lbIdx, $("lbdel")); };
+    $("lbdelall").onclick = function (e) { e.stopPropagation(); delWork(lbCur, $("lbdelall")); };
 
     $("lb").hidden = false;
   }
@@ -596,6 +599,56 @@
       refreshChips();
       render();
       toast("已删除这张照片", "ok");
+    } catch (err) {
+      done = true; clearTimeout(guard);
+      toast(zhError(err && err.message ? err.message : err), "err");
+      btn.disabled = false; btn.textContent = old;
+    }
+  }
+
+  /* ---------- 删除整个作品集（仅管理员）---------- */
+  async function delWork(p, btn) {
+    const n = (p.raw || []).length;
+    if (!confirm("确定删除整个作品集「" + (p.place || "") + "」？\n\n" +
+                 (n ? "它的 " + n + " 张照片会一起删除，" : "") +
+                 "首页立刻消失，不可恢复。")) return;
+
+    const old = btn.textContent;
+    btn.disabled = true; btn.textContent = "删除中…";
+    let done = false;
+    const guard = setTimeout(function () {
+      if (done) return;
+      btn.disabled = false; btn.textContent = old;
+      toast("等太久了 —— 请刷新页面确认作品集是否已被删除", "err");
+    }, 45000);
+
+    try {
+      // 先删存储文件（尽力而为）：仓库里的相对路径（photos/...）不是存储对象，跳过
+      try {
+        const all = [];
+        (p.raw || []).forEach(function (raw) {
+          all.push(raw);
+          all.push(raw.replace(/\/([^/]+)$/, "/thumb/$1"));
+        });
+        const remote = all.filter(function (x) { return x.indexOf("photos/") !== 0; });
+        if (remote.length) {
+          const rm = await withTimeout(
+            sb.storage.from(APP_CONFIG.PHOTO_BUCKET).remove(remote), 30000, "删除文件");
+          if (rm && rm.error) console.warn("部分存储文件删除失败（留孤儿文件，不影响显示）:", rm.error);
+        }
+      } catch (e2) {
+        console.warn("存储删除超时/失败，继续删记录:", e2);
+      }
+
+      const d = await withTimeout(sb.from("works").delete().eq("id", p.id), 20000, "删除作品集");
+      if (d.error) throw d.error;
+
+      done = true; clearTimeout(guard);
+      closeLb();
+      await withTimeout(loadWorks(), 20000, "刷新列表");
+      refreshChips();
+      render();
+      toast("整个作品集已删除", "ok");
     } catch (err) {
       done = true; clearTimeout(guard);
       toast(zhError(err && err.message ? err.message : err), "err");

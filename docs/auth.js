@@ -175,6 +175,18 @@
     return m || "未知错误";
   };
 
+  // 带超时的请求包装：supabase-js 默认没有超时，网络一挂 Promise 永远不 settle
+  window.withTimeout = function (promise, ms, label) {
+    return Promise.race([
+      promise,
+      new Promise(function (_, rej) {
+        setTimeout(function () {
+          rej(new Error((label || "请求") + "超时（" + Math.round(ms / 1000) + " 秒），可能是网络卡住了"));
+        }, ms);
+      })
+    ]);
+  };
+
   // 简易提示条
   window.toast = function (msg, kind) {
     let t = document.getElementById("_toast");
