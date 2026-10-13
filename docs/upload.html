@@ -94,8 +94,6 @@
 
         <label for="caption">文案（会显示在作品上）</label>
         <textarea id="caption" maxlength="300" placeholder="例如：环湖一圈，风把汗都吹干了"></textarea>
-        <div id="capVoice"></div>
-        <div class="voicetip" id="capVoiceTip"></div>
 
         <div class="row">
           <div>
@@ -336,10 +334,6 @@
   $("btnRecheck2").onclick = recheck($("btnRecheck2"));
 
   (async function init() {
-    // 语音输入：只在支持的浏览器里出现按钮（微信 / 国内直连 Chrome 不会出现）
-    if (window.attachVoice) {
-      attachVoice($("capVoice"), $("caption"), $("capVoiceTip"));
-    }
     try {
       await checkLogin();
     } catch (err) {

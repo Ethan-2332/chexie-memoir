@@ -15,7 +15,7 @@
 
   // 站点版本号：每次改动手动 +1，方便一眼看出"你打开的是哪个版本"
   // （浏览器缓存是这类问题最常见的元凶，有这个号就不用猜了）
-  const SITE_VERSION = "2026-10-12.6";
+  const SITE_VERSION = "2026-10-12.5";
 
   /* ---------- 照片地址解析 ----------
      兼容两种来源：
@@ -205,85 +205,6 @@
         }, ms);
       })
     ]);
-  };
-
-  /* ---------- 语音输入（浏览器原生 Web Speech API）----------
-     只在支持的环境里生成按钮，不支持就什么都不做：
-       ✅ 手机 Safari（iOS 14.5+）、Edge、开了代理的 Chrome
-       ❌ 微信/QQ 内置浏览器、国内直连的 Chrome、多数安卓国产浏览器
-     识别服务在境外，所以国内直连会报 network 错误 —— 提示里会说明原因。 */
-  window.voiceSupported = function () {
-    return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
-  };
-
-  window.attachVoice = function (container, input, tipEl) {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR || !container || !input) return false;   // 不支持 → 不显示按钮
-
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "voicebtn";
-    btn.textContent = "🎤 语音输入";
-    btn.title = "点一下开始说话，说完再点一下停止";
-    container.appendChild(btn);
-
-    let rec = null, on = false, base = "";
-
-    const tip = function (t, isErr) {
-      if (!tipEl) return;
-      tipEl.textContent = t || "";
-      tipEl.style.color = isErr ? "#d93025" : "";
-    };
-
-    const stop = function () {
-      on = false;
-      btn.textContent = "🎤 语音输入";
-      btn.classList.remove("rec");
-      if (rec) { try { rec.stop(); } catch (e) {} }
-    };
-
-    btn.onclick = function () {
-      if (on) { stop(); tip("已停止"); return; }
-
-      rec = new SR();
-      rec.lang = "zh-CN";
-      rec.continuous = true;
-      rec.interimResults = true;
-
-      base = input.value || "";
-      if (base && !/\s$/.test(base)) base += " ";     // 已有内容时补个空格
-
-      rec.onstart = function () {
-        on = true;
-        btn.textContent = "⏹ 停止";
-        btn.classList.add("rec");
-        tip("正在听…请说话（识别服务在境外，需要网络能连上）");
-      };
-      rec.onresult = function (e) {
-        let txt = "";
-        for (let i = e.resultIndex; i < e.results.length; i++) {
-          txt += e.results[i][0].transcript;
-        }
-        input.value = base + txt;
-      };
-      rec.onerror = function (e) {
-        const msgs = {
-          "not-allowed": "没有麦克风权限 —— 请点浏览器地址栏左侧的锁图标，允许使用麦克风",
-          "service-not-allowed": "浏览器拒绝了语音服务",
-          "network": "连不上语音识别服务器（国内直连会被拦，需要开代理）",
-          "no-speech": "没听到声音，再试一次",
-          "audio-capture": "找不到麦克风设备"
-        };
-        tip(msgs[e.error] || ("语音识别出错：" + e.error), true);
-        stop();
-      };
-      rec.onend = function () { stop(); tip("已停止，可以再点一次继续说"); };
-
-      try { rec.start(); }
-      catch (e) { tip("启动失败：" + (e.message || e), true); stop(); }
-    };
-
-    return true;
   };
 
   // 简易提示条
