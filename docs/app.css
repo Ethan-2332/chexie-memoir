@@ -106,3 +106,12 @@ textarea{min-height:88px;resize:vertical}
 .badge.rejected{background:#fce8e6;color:#a50e0e}
 
 .footer{color:var(--dim);font-size:12.5px;text-align:center;padding:8px 20px 40px;line-height:1.8}
+
+/* 语音输入按钮（只在支持的浏览器里出现） */
+.voicebtn{
+  border:1px solid var(--line);background:#fff;color:var(--dim);border-radius:8px;
+  padding:7px 13px;font:inherit;font-size:13px;cursor:pointer;margin-top:8px;transition:.15s;
+}
+.voicebtn:hover{border-color:#c9d6e8;color:var(--ink);background:#fbfcfe}
+.voicebtn.rec{background:#fce8e6;border-color:#f3b8b3;color:#a50e0e;font-weight:600}
+.voicetip{color:var(--dim);font-size:12.5px;margin-top:6px;line-height:1.6;min-height:1.2em}
